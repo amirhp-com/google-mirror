@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.6 — Cloudflare Workers Proxy
+ * WebGate v1.2.7 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.6' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.7' }));
       }
 
       let target;
@@ -169,7 +169,15 @@ function rewriteHtml(html, base, PROXY) {
     return '';
   });
 
-  // 2. Rewrite attributes (double-quoted)
+  // 2. Protect <script> blocks from attribute rewriting
+  const scripts = [];
+  html = html.replace(/(<script[\s\S]*?<\/script>)/gi, (m) => {
+    const idx = scripts.length;
+    scripts.push(m);
+    return `<!--WEBGATE_SCRIPT_${idx}-->`;
+  });
+
+  // 3. Rewrite attributes (double-quoted)
   html = html.replace(
     /(\b(?:src|href|srcset|poster|data|content|action|background|formaction)\s*=\s*")([^"]*?)(")/gi,
     (m, pre, val, post, offset) => rewriteAttr(m, pre, val, post, html, offset, base, PROXY)
@@ -191,7 +199,7 @@ function rewriteHtml(html, base, PROXY) {
     }
   );
 
-  // 3. Inline styles
+  // 4. Inline styles
   html = html.replace(/(style\s*=\s*")([^"]+)(")/gi, (m, pre, css, post) => {
     return pre + rewriteCssUrls(css, base, PROXY) + post;
   });
@@ -199,12 +207,28 @@ function rewriteHtml(html, base, PROXY) {
     return pre + rewriteCssUrls(css, base, PROXY) + post;
   });
 
-  // 4. <style> blocks
+  // 5. <style> blocks
   html = html.replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (m, open, css, close) => {
     return open + rewriteCss(css, base, PROXY) + close;
   });
 
-  // 5. <a> tags for postMessage navigation
+  // 6. Restore <script> blocks, rewriting only their src= tag attribute
+  html = html.replace(/<!--WEBGATE_SCRIPT_(\d+)-->/g, (m, idx) => {
+    let s = scripts[parseInt(idx)];
+    s = s.replace(/(<script\s[^>]*?\bsrc\s*=\s*")([^"]*?)(")/gi, (sm, pre, val, post) => {
+      if (val.includes('?url=')) return sm;
+      const p = px(val, base, PROXY);
+      return p ? pre + p + post : sm;
+    });
+    s = s.replace(/(<script\s[^>]*?\bsrc\s*=\s*')([^']*?)(')/gi, (sm, pre, val, post) => {
+      if (val.includes('?url=')) return sm;
+      const p = px(val, base, PROXY);
+      return p ? pre + p + post : sm;
+    });
+    return s;
+  });
+
+  // 7. <a> tags for postMessage navigation
   html = html.replace(
     /(<a\s[^>]*?)href\s*=\s*"([^"]*\/api\/proxy\?url=([^"]*))"/gi,
     (m, pre, proxyHref, encoded) => {

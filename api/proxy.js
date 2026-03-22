@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.6 — Vercel Serverless Proxy
+ * WebGate v1.2.7 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.2.6' });
+    return res.status(200).json({ status: 'ok', version: '1.2.7' });
   }
 
   const targetUrl = req.query.url;
@@ -166,9 +166,17 @@ function rewriteHtml(html, base, PROXY) {
     return '';
   });
 
-  // 2. Rewrite ALL src/href/srcset/poster/action/data attributes
-  //    This single regex handles both " and ' quoted values for any attribute.
-  //    We match the attribute name, then capture the URL.
+  // 2. Protect <script> blocks from attribute rewriting.
+  //    Extract them, replace with placeholders, rewrite HTML, then restore.
+  const scripts = [];
+  html = html.replace(/(<script[\s\S]*?<\/script>)/gi, (m) => {
+    const idx = scripts.length;
+    scripts.push(m);
+    return `<!--WEBGATE_SCRIPT_${idx}-->`;
+  });
+
+  // 3. Rewrite ALL src/href/srcset/poster/action/data attributes
+  //    (now safe — no <script> blocks to corrupt)
 
   // Double-quoted attributes
   html = html.replace(
@@ -192,7 +200,7 @@ function rewriteHtml(html, base, PROXY) {
     }
   );
 
-  // 3. Inline style="..." — rewrite url() inside
+  // 4. Inline style="..." — rewrite url() inside
   html = html.replace(/(style\s*=\s*")([^"]+)(")/gi, (m, pre, css, post) => {
     return pre + rewriteCssUrls(css, base, PROXY) + post;
   });
@@ -200,12 +208,29 @@ function rewriteHtml(html, base, PROXY) {
     return pre + rewriteCssUrls(css, base, PROXY) + post;
   });
 
-  // 4. <style> blocks
+  // 5. <style> blocks
   html = html.replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (m, open, css, close) => {
     return open + rewriteCss(css, base, PROXY) + close;
   });
 
-  // 5. Rewrite <a> tags for navigation via postMessage
+  // 6. Restore <script> blocks, but rewrite their src= attribute (tag only, not content)
+  html = html.replace(/<!--WEBGATE_SCRIPT_(\d+)-->/g, (m, idx) => {
+    let s = scripts[parseInt(idx)];
+    // Only rewrite the <script src="..."> tag attribute, not the script body
+    s = s.replace(/(<script\s[^>]*?\bsrc\s*=\s*")([^"]*?)(")/gi, (sm, pre, val, post) => {
+      if (val.includes('/api/proxy') || val.includes('?url=')) return sm;
+      const p = px(val, base, PROXY);
+      return p ? pre + p + post : sm;
+    });
+    s = s.replace(/(<script\s[^>]*?\bsrc\s*=\s*')([^']*?)(')/gi, (sm, pre, val, post) => {
+      if (val.includes('/api/proxy') || val.includes('?url=')) return sm;
+      const p = px(val, base, PROXY);
+      return p ? pre + p + post : sm;
+    });
+    return s;
+  });
+
+  // 7. Rewrite <a> tags for navigation via postMessage
   //    (after the general href rewrite above, <a> hrefs now point to /api/proxy?url=...
   //     we need to override them to use postMessage instead for SPA navigation)
   html = html.replace(
