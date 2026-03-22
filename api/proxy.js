@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.2 — Vercel Serverless Proxy
+ * WebGate v1.2.3 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.2.2' });
+    return res.status(200).json({ status: 'ok', version: '1.2.3' });
   }
 
   const targetUrl = req.query.url;
@@ -116,6 +116,17 @@ export default async function handler(req, res) {
       js = rewriteJsUrls(js, target, PROXY);
       res.setHeader('Content-Type', ct);
       return res.status(resp.status).send(js);
+    }
+
+    // ── m3u8/HLS playlists and manifests: rewrite URLs ──
+    const isManifest = ct.includes('mpegurl') || ct.includes('m3u8') ||
+      ct.includes('dash+xml') || targetUrl.match(/\.(m3u8|mpd)(\?|$)/i);
+    if (isManifest) {
+      const buf = Buffer.from(await resp.arrayBuffer());
+      let text = buf.toString('utf-8');
+      text = rewriteManifest(text, target, PROXY);
+      res.setHeader('Content-Type', ct);
+      return res.status(resp.status).send(text);
     }
 
     // ── Everything else: pass through binary (images, fonts, etc.) ──
@@ -227,14 +238,28 @@ function rewriteHtml(html, base, PROXY) {
 (function(){
   var BASE = ${JSON.stringify(base.href)};
   var PROXY = ${JSON.stringify(PROXY)};
+  var PROXY_ORIGIN = new URL(PROXY).origin;
+  var BASE_ORIGIN = new URL(BASE).origin;
 
   function shouldProxy(u) {
-    return u && !u.startsWith('data:') && !u.startsWith('blob:') && !u.startsWith('javascript:') && u !== '#' && u.indexOf('/api/proxy') === -1 && u.indexOf('?url=') === -1;
+    return u && !u.startsWith('data:') && !u.startsWith('blob:') && !u.startsWith('javascript:') && u !== '#' && u.indexOf('?url=') === -1;
+  }
+
+  // Fix URLs that wrongly point to the proxy domain (from window.location usage)
+  function fixProxyDomainUrl(u) {
+    if (!u) return u;
+    // If URL starts with proxy origin but is NOT a proxy API call, fix it
+    if (u.startsWith(PROXY_ORIGIN) && u.indexOf('/api/proxy') === -1 && u.indexOf('?url=') === -1) {
+      var path = u.slice(PROXY_ORIGIN.length);
+      return BASE_ORIGIN + path;
+    }
+    return u;
   }
 
   function toProxy(u) {
     if (!shouldProxy(u)) return u;
     try {
+      u = fixProxyDomainUrl(u);
       var abs = /^https?:\\/\\//.test(u) ? u : new URL(u, BASE).href;
       return PROXY + '?url=' + encodeURIComponent(abs);
     } catch(e) { return u; }
@@ -481,8 +506,31 @@ function rewriteJsUrls(js, base, PROXY) {
   // Rewrite absolute URLs in string literals: "https://..." and 'https://...'
   js = js.replace(/(["'])(https?:\/\/[^"']+)\1/g, (m, q, url) => {
     // Skip if already proxied or is the proxy itself
-    if (url.includes('/api/proxy') || url.includes('/proxy-worker')) return m;
+    if (url.includes('/api/proxy') || url.includes('/proxy-worker') || url.includes('?url=')) return m;
     return q + PROXY + '?url=' + encodeURIComponent(url) + q;
   });
   return js;
+}
+
+
+// ═══════════════════════════════════════════
+// HLS/DASH manifest rewriting
+// ═══════════════════════════════════════════
+
+function rewriteManifest(text, base, PROXY) {
+  // Rewrite each non-comment, non-empty line that looks like a URL or path
+  return text.split('\n').map(line => {
+    const trimmed = line.trim();
+    // Skip empty lines, comments (#EXT..., #...), and data URIs
+    if (!trimmed || trimmed.startsWith('#')) {
+      // But rewrite URI= inside #EXT tags (e.g., #EXT-X-MAP:URI="init.mp4")
+      return line.replace(/URI="([^"]+)"/gi, (m, uri) => {
+        const p = px(uri, base, PROXY);
+        return p ? `URI="${p}"` : m;
+      });
+    }
+    // This line is a URL/path — proxy it
+    const p = px(trimmed, base, PROXY);
+    return p || line;
+  }).join('\n');
 }

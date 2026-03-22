@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.2 — Cloudflare Workers Proxy
+ * WebGate v1.2.3 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.2' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.3' }));
       }
 
       let target;
@@ -80,7 +80,11 @@ export default {
       const isCss = ct.includes('text/css');
       const isJs = ct.includes('javascript') || ct.includes('ecmascript');
 
-      if (isHtml || isCss || isJs) {
+      // m3u8/HLS playlists and DASH manifests
+      const isManifest = ct.includes('mpegurl') || ct.includes('m3u8') ||
+        ct.includes('dash+xml') || targetUrl.match(/\.(m3u8|mpd)(\?|$)/i);
+
+      if (isHtml || isCss || isJs || isManifest) {
         const buf = await resp.arrayBuffer();
         let text = new TextDecoder().decode(buf);
 
@@ -88,6 +92,8 @@ export default {
           text = rewriteHtml(text, target, PROXY);
         } else if (isCss) {
           text = rewriteCss(text, target, PROXY);
+        } else if (isManifest) {
+          text = rewriteManifest(text, target, PROXY);
         } else {
           text = rewriteJsUrls(text, target, PROXY);
         }
@@ -222,14 +228,26 @@ function rewriteHtml(html, base, PROXY) {
 (function(){
   var BASE = ${JSON.stringify(base.href)};
   var PROXY = ${JSON.stringify(PROXY)};
+  var PROXY_ORIGIN = new URL(PROXY).origin;
+  var BASE_ORIGIN = new URL(BASE).origin;
 
   function shouldProxy(u) {
-    return u && !u.startsWith('data:') && !u.startsWith('blob:') && !u.startsWith('javascript:') && u !== '#' && u.indexOf('/api/proxy') === -1 && u.indexOf('?url=') === -1;
+    return u && !u.startsWith('data:') && !u.startsWith('blob:') && !u.startsWith('javascript:') && u !== '#' && u.indexOf('?url=') === -1;
+  }
+
+  function fixProxyDomainUrl(u) {
+    if (!u) return u;
+    if (u.startsWith(PROXY_ORIGIN) && u.indexOf('/api/proxy') === -1 && u.indexOf('?url=') === -1) {
+      var path = u.slice(PROXY_ORIGIN.length);
+      return BASE_ORIGIN + path;
+    }
+    return u;
   }
 
   function toProxy(u) {
     if (!shouldProxy(u)) return u;
     try {
+      u = fixProxyDomainUrl(u);
       var abs = /^https?:\\/\\//.test(u) ? u : new URL(u, BASE).href;
       return PROXY + '?url=' + encodeURIComponent(abs);
     } catch(e) { return u; }
@@ -453,6 +471,25 @@ function rewriteJsUrls(js, base, PROXY) {
     return q + PROXY + '?url=' + encodeURIComponent(url) + q;
   });
   return js;
+}
+
+
+// ═══════════════════════════════════════════
+// HLS/DASH manifest rewriting
+// ═══════════════════════════════════════════
+
+function rewriteManifest(text, base, PROXY) {
+  return text.split('\n').map(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      return line.replace(/URI="([^"]+)"/gi, (m, uri) => {
+        const p = px(uri, base, PROXY);
+        return p ? `URI="${p}"` : m;
+      });
+    }
+    const p = px(trimmed, base, PROXY);
+    return p || line;
+  }).join('\n');
 }
 
 
