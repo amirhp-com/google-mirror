@@ -1,5 +1,5 @@
 /**
- * WebGate v1.0.0 — Virtual Browser
+ * WebGate v1.1.0 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '' };
 

@@ -1,5 +1,5 @@
 /**
- * WebGate v1.0.0 — Vercel Serverless Proxy
+ * WebGate v1.1.0 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.0.0' });
+    return res.status(200).json({ status: 'ok', version: '1.1.0' });
   }
 
   const targetUrl = req.query.url;
@@ -88,7 +88,20 @@ export default async function handler(req, res) {
       return res.status(resp.status).send(text);
     }
 
-    // ── Everything else: pass through binary (images, fonts, JS, etc.) ──
+    // ── JavaScript: rewrite common URL patterns ──
+    const isJs = ct.includes('javascript') || ct.includes('ecmascript');
+    if (isJs) {
+      const buf = Buffer.from(await resp.arrayBuffer());
+      if (buf.length > MAX_SIZE) {
+        return res.status(413).json({ error: 'Response too large' });
+      }
+      let js = buf.toString('utf-8');
+      js = rewriteJsUrls(js, target, PROXY);
+      res.setHeader('Content-Type', ct);
+      return res.status(resp.status).send(js);
+    }
+
+    // ── Everything else: pass through binary (images, fonts, etc.) ──
     const buf = Buffer.from(await resp.arrayBuffer());
     if (buf.length > MAX_SIZE) {
       return res.status(413).json({ error: 'Response too large' });
@@ -140,13 +153,13 @@ function rewriteHtml(html, base, PROXY) {
 
   // Double-quoted attributes
   html = html.replace(
-    /(\b(?:src|href|srcset|poster|data|content)\s*=\s*")([^"]*?)(")/gi,
+    /(\b(?:src|href|srcset|poster|data|content|action|background|formaction)\s*=\s*")([^"]*?)(")/gi,
     (m, pre, val, post, offset) => rewriteAttr(m, pre, val, post, html, offset, base, PROXY)
   );
 
   // Single-quoted attributes
   html = html.replace(
-    /(\b(?:src|href|srcset|poster|data|content)\s*=\s*')([^]*?)(')/gi,
+    /(\b(?:src|href|srcset|poster|data|content|action|background|formaction)\s*=\s*')([^]*?)(')/gi,
     (m, pre, val, post, offset) => rewriteAttr(m, pre, val, post, html, offset, base, PROXY)
   );
 
@@ -181,11 +194,61 @@ function rewriteHtml(html, base, PROXY) {
     }
   );
 
-  // 6. Inject intercept script for any remaining links
+  // 6. Inject intercept script for navigation + JS runtime URL interception
   const script = `
 <script>
 (function(){
   var BASE = ${JSON.stringify(base.href)};
+  var PROXY = ${JSON.stringify(PROXY)};
+
+  // ── Intercept fetch() ──
+  var _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string' && /^https?:\\/\\//.test(input)) {
+      input = PROXY + '?url=' + encodeURIComponent(input);
+    } else if (input instanceof Request && /^https?:\\/\\//.test(input.url)) {
+      input = new Request(PROXY + '?url=' + encodeURIComponent(input.url), input);
+    }
+    return _fetch.call(this, input, init);
+  };
+
+  // ── Intercept XMLHttpRequest.open() ──
+  var _xhrOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    if (typeof url === 'string' && /^https?:\\/\\//.test(url)) {
+      url = PROXY + '?url=' + encodeURIComponent(url);
+    }
+    return _xhrOpen.apply(this, [method, url].concat(Array.prototype.slice.call(arguments, 2)));
+  };
+
+  // ── Intercept window.open() ──
+  var _wopen = window.open;
+  window.open = function(url) {
+    if (url && /^https?:\\/\\//.test(url)) {
+      window.parent.postMessage({ type: 'navigate', url: url }, '*');
+      return null;
+    }
+    return _wopen.apply(this, arguments);
+  };
+
+  // ── Intercept Element.src and Element.href property sets ──
+  ['HTMLImageElement','HTMLScriptElement','HTMLIFrameElement','HTMLSourceElement','HTMLMediaElement'].forEach(function(t) {
+    var ctor = window[t];
+    if (!ctor) return;
+    var desc = Object.getOwnPropertyDescriptor(ctor.prototype, 'src');
+    if (desc && desc.set) {
+      Object.defineProperty(ctor.prototype, 'src', {
+        set: function(v) {
+          if (typeof v === 'string' && /^https?:\\/\\//.test(v)) {
+            v = PROXY + '?url=' + encodeURIComponent(v);
+          }
+          desc.set.call(this, v);
+        },
+        get: desc.get,
+        configurable: true
+      });
+    }
+  });
 
   document.addEventListener('click', function(e) {
     var a = e.target.closest('a');
@@ -315,4 +378,19 @@ function rewriteCssUrls(css, base, PROXY) {
 
 function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+
+// ═══════════════════════════════════════════
+// JavaScript URL rewriting
+// ═══════════════════════════════════════════
+
+function rewriteJsUrls(js, base, PROXY) {
+  // Rewrite absolute URLs in string literals: "https://..." and 'https://...'
+  js = js.replace(/(["'])(https?:\/\/[^"']+)\1/g, (m, q, url) => {
+    // Skip if already proxied or is the proxy itself
+    if (url.includes('/api/proxy') || url.includes('/proxy-worker')) return m;
+    return q + PROXY + '?url=' + encodeURIComponent(url) + q;
+  });
+  return js;
 }
