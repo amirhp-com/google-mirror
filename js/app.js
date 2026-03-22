@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.3 — Virtual Browser
+ * WebGate v1.2.4 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,9 +9,9 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.2.3';
+  const VERSION = '1.2.4';
   const STORAGE_KEY = 'webgate_settings';
-  const defaults = { workerUrl: '' };
+  const defaults = { workerUrl: '', cfWorkerUrl: '', useCf: false };
 
   let settings = loadSettings();
   let navHistory = [];
@@ -60,7 +60,6 @@
     bindEvents();
     // Populate version strings in DOM
     document.title = `WebGate v${VERSION} — Virtual Browser`;
-    document.querySelectorAll('.version-badge').forEach(el => el.textContent = `v${VERSION}`);
     document.querySelectorAll('.version').forEach(el => el.textContent = `WebGate v${VERSION}`);
     document.querySelectorAll('.version-info').forEach(el => el.textContent = `WebGate v${VERSION}`);
   }
@@ -136,8 +135,10 @@
   }
 
   function buildProxyUrl(targetUrl) {
-    const base = settings.workerUrl.replace(/\/+$/, '');
-    return `${base}?url=${encodeURIComponent(targetUrl)}`;
+    const proxyBase = (settings.useCf && settings.cfWorkerUrl)
+      ? settings.cfWorkerUrl.replace(/\/+$/, '')
+      : settings.workerUrl.replace(/\/+$/, '');
+    return `${proxyBase}?url=${encodeURIComponent(targetUrl)}`;
   }
 
   // Strip proxy prefix from URL to get the clean original URL
@@ -265,9 +266,11 @@
     $('.modal-backdrop').addEventListener('click', closeSettings);
     $('#settings-save').addEventListener('click', () => {
       settings.workerUrl = $('#settings-worker-url').value.trim();
+      settings.cfWorkerUrl = $('#settings-cf-worker-url').value.trim();
+      settings.useCf = $('#settings-use-cf').checked;
       saveSettings();
       closeSettings();
-      if (!settings.workerUrl) showSetup();
+      if (!settings.workerUrl && !settings.cfWorkerUrl) showSetup();
     });
 
     // Keyboard shortcuts
@@ -280,6 +283,8 @@
 
   function openSettings() {
     $('#settings-worker-url').value = settings.workerUrl;
+    $('#settings-cf-worker-url').value = settings.cfWorkerUrl || '';
+    $('#settings-use-cf').checked = settings.useCf || false;
     settingsModal.classList.remove('hidden');
   }
 

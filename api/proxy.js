@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.3 — Vercel Serverless Proxy
+ * WebGate v1.2.4 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.2.3' });
+    return res.status(200).json({ status: 'ok', version: '1.2.4' });
   }
 
   const targetUrl = req.query.url;

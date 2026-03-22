@@ -322,13 +322,26 @@ input { font-family: inherit; }
   opacity: 0.5;
 }
 
-.version-badge {
-  font-size: 10px;
+/* ===== Welcome Footer ===== */
+.welcome-footer {
+  margin-top: 16px;
+  font-size: 12px;
   color: var(--text-muted);
-  padding: 2px 8px;
-  flex-shrink: 0;
   opacity: 0.5;
-  letter-spacing: 0.5px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.welcome-footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.welcome-footer a:hover {
+  color: var(--accent);
 }
 
 .version-info {
@@ -337,6 +350,66 @@ input { font-family: inherit; }
   color: var(--text-muted);
   opacity: 0.5;
   text-align: center;
+}
+
+/* ===== Settings Help ===== */
+.setting-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+.setting-hint code {
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.settings-help {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-help h3 {
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.settings-help ul {
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+
+.settings-help kbd {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.settings-links {
+  margin-top: 12px;
+  font-size: 12px;
+  display: flex;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.settings-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.settings-links a:hover {
+  text-decoration: underline;
 }
 
 /* ===== Secure Icon ===== */
