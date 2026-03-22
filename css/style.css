@@ -176,6 +176,23 @@ input { font-family: inherit; }
   outline: none;
 }
 
+.copy-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.copy-btn:hover { color: var(--accent); }
+
+.copy-btn.copied { color: #4ade80; }
+
 .go-btn {
   padding: 6px 16px;
   background: var(--accent);
