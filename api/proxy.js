@@ -1,5 +1,5 @@
 /**
- * WebGate v1.3.4 — Vercel Serverless Proxy
+ * WebGate v1.3.5 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.3.4' });
+    return res.status(200).json({ status: 'ok', version: '1.3.5' });
   }
 
   const targetUrl = req.query.url;
@@ -308,6 +308,26 @@ function rewriteHtml(html, base, PROXY) {
     }
     return _wopen.apply(this, arguments);
   };
+
+  // ── Intercept pushState/replaceState (SPA navigation) ──
+  function notifyUrlChange() {
+    var href = window.location.href;
+    var m = href.match(/[?&]url=([^&]+)/);
+    var clean = m ? decodeURIComponent(m[1]) : null;
+    if (clean) window.parent.postMessage({ type: 'urlchange', url: clean }, '*');
+  }
+
+  var _pushState = history.pushState;
+  history.pushState = function() {
+    _pushState.apply(this, arguments);
+    notifyUrlChange();
+  };
+  var _replaceState = history.replaceState;
+  history.replaceState = function() {
+    _replaceState.apply(this, arguments);
+    notifyUrlChange();
+  };
+  window.addEventListener('popstate', notifyUrlChange);
 
   // ── Intercept Element.src property sets (catches relative URLs too) ──
   ['HTMLImageElement','HTMLScriptElement','HTMLIFrameElement','HTMLSourceElement','HTMLMediaElement','HTMLEmbedElement'].forEach(function(t) {

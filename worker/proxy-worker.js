@@ -1,5 +1,5 @@
 /**
- * WebGate v1.3.4 — Cloudflare Workers Proxy
+ * WebGate v1.3.5 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.3.4' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.3.5' }));
       }
 
       let target;
@@ -298,6 +298,26 @@ function rewriteHtml(html, base, PROXY) {
     }
     return _wopen.apply(this, arguments);
   };
+
+  // Intercept pushState/replaceState (SPA navigation)
+  function notifyUrlChange() {
+    var href = window.location.href;
+    var m = href.match(/[?&]url=([^&]+)/);
+    var clean = m ? decodeURIComponent(m[1]) : null;
+    if (clean) window.parent.postMessage({ type: 'urlchange', url: clean }, '*');
+  }
+
+  var _pushState = history.pushState;
+  history.pushState = function() {
+    _pushState.apply(this, arguments);
+    notifyUrlChange();
+  };
+  var _replaceState = history.replaceState;
+  history.replaceState = function() {
+    _replaceState.apply(this, arguments);
+    notifyUrlChange();
+  };
+  window.addEventListener('popstate', notifyUrlChange);
 
   // Intercept Element.src sets (catches relative URLs too)
   ['HTMLImageElement','HTMLScriptElement','HTMLIFrameElement','HTMLSourceElement','HTMLMediaElement','HTMLEmbedElement'].forEach(function(t) {

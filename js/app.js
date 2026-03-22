@@ -1,5 +1,5 @@
 /**
- * WebGate v1.3.4 — Virtual Browser
+ * WebGate v1.3.5 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.3.4';
+  const VERSION = '1.3.5';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '', cfWorkerUrl: '', useCf: false };
   const HISTORY_KEY = 'webgate_history';
@@ -199,6 +199,24 @@
     return url;
   }
 
+  // ───── URL bar sync ─────
+  function syncUrlFromIframe() {
+    try {
+      const frameHref = proxyFrame.contentWindow.location.href;
+      const clean = stripProxyPrefix(frameHref);
+      if (clean && clean !== frameHref && clean !== currentUrl) {
+        updateUrlBar(clean);
+      }
+    } catch {}
+  }
+
+  function updateUrlBar(url) {
+    if (!url || url === currentUrl) return;
+    currentUrl = url;
+    try { urlInput.value = decodeURI(url); } catch { urlInput.value = url; }
+    setHashUrl(url);
+  }
+
   // ───── Hash persistence ─────
   function setHashUrl(url) {
     history.replaceState(null, '', '#' + encodeURIComponent(url));
@@ -318,6 +336,8 @@
     // Iframe load/error events
     proxyFrame.addEventListener('load', () => {
       hideLoading();
+      // Sync URL bar with iframe's actual URL (catches redirects, unintercepted nav)
+      syncUrlFromIframe();
     });
 
     proxyFrame.addEventListener('error', () => {
@@ -329,6 +349,10 @@
     window.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'navigate' && e.data.url) {
         navigate(e.data.url);
+      }
+      // SPA url changes (pushState/replaceState/popstate)
+      if (e.data && e.data.type === 'urlchange' && e.data.url) {
+        updateUrlBar(e.data.url);
       }
     });
 
