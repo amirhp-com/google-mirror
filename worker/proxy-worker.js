@@ -1,5 +1,5 @@
 /**
- * WebGate v1.3.5 — Cloudflare Workers Proxy
+ * WebGate v1.3.6 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -7,7 +7,7 @@
  * Deploy: npx wrangler deploy worker/proxy-worker.js --name webgate-proxy
  */
 
-const MAX_SIZE = 50 * 1024 * 1024;
+// Large file downloads stream directly without buffering
 
 export default {
   async fetch(request, env, ctx) {
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.3.5' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.3.6' }));
       }
 
       let target;
@@ -102,12 +102,10 @@ export default {
         return handleCors(request, new Response(text, { status: resp.status, headers: respHeaders }));
       }
 
-      // Binary pass-through
-      const buf = await resp.arrayBuffer();
-      if (buf.byteLength > MAX_SIZE) {
-        return handleCors(request, jsonResponse({ error: 'Response too large' }, 413));
-      }
-      return handleCors(request, new Response(buf, { status: resp.status, headers: respHeaders }));
+      // Binary pass-through — stream directly without buffering
+      const contentLength = resp.headers.get('content-length');
+      if (contentLength) respHeaders.set('Content-Length', contentLength);
+      return handleCors(request, new Response(resp.body, { status: resp.status, headers: respHeaders }));
 
     } catch (err) {
       return handleCors(request, jsonResponse({ error: `Proxy error: ${err.message}` }, 502));

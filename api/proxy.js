@@ -1,5 +1,5 @@
 /**
- * WebGate v1.3.5 — Vercel Serverless Proxy
+ * WebGate v1.3.6 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -10,7 +10,7 @@
  *       ... and so on for every sub-resource.
  */
 
-const MAX_SIZE = 50 * 1024 * 1024;
+// Large file downloads stream directly; for files >5MB use Cloudflare Workers backend
 
 export default async function handler(req, res) {
   // CORS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.3.5' });
+    return res.status(200).json({ status: 'ok', version: '1.3.6' });
   }
 
   const targetUrl = req.query.url;
@@ -121,12 +121,15 @@ export default async function handler(req, res) {
     }
 
     // ── Everything else: pass through binary (images, fonts, etc.) ──
-    const buf = Buffer.from(await resp.arrayBuffer());
-    if (buf.length > MAX_SIZE) {
-      return res.status(413).json({ error: 'Response too large' });
-    }
+    // Stream the response — Vercel has body size limits (~4.5MB free, ~5MB pro)
+    // so large file downloads should use the Cloudflare Workers backend instead.
+    const contentLength = resp.headers.get('content-length');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
     res.setHeader('Content-Type', ct);
-    return res.status(resp.status).send(buf);
+    res.status(resp.status);
+    const { Readable } = require('stream');
+    const nodeStream = Readable.fromWeb(resp.body);
+    return nodeStream.pipe(res);
 
   } catch (err) {
     return res.status(502).json({ error: `Proxy error: ${err.message}` });
