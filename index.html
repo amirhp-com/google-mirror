@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGate — Browse Freely</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Setup Panel (shown when no worker URL is configured) -->
+    <div id="setup-panel" class="panel hidden">
+      <div class="setup-card">
+        <h1>WebGate Setup</h1>
+        <p>Enter your Cloudflare Worker proxy URL to get started.</p>
+        <div class="input-group">
+          <input type="url" id="worker-url-input" placeholder="https://your-proxy.your-subdomain.workers.dev" autocomplete="off">
+          <button id="save-worker-btn">Save & Connect</button>
+        </div>
+        <p class="hint">See the README for deployment instructions.</p>
+      </div>
+    </div>
+
+    <!-- Main Browser -->
+    <header id="toolbar">
+      <div class="toolbar-left">
+        <button id="btn-back" class="nav-btn" title="Back" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <button id="btn-forward" class="nav-btn" title="Forward" disabled>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+        <button id="btn-reload" class="nav-btn" title="Reload">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
+      </div>
+      <form id="url-form" class="toolbar-center">
+        <div class="url-bar">
+          <svg class="url-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
+          <input type="text" id="url-input" placeholder="Enter a URL or search with Google..." autocomplete="off" spellcheck="false">
+          <button type="submit" class="go-btn">Go</button>
+        </div>
+      </form>
+      <div class="toolbar-right">
+        <button id="btn-settings" class="nav-btn" title="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Loading Bar -->
+    <div id="loading-bar" class="hidden">
+      <div class="loading-progress"></div>
+    </div>
+
+    <!-- Welcome Screen -->
+    <main id="welcome-screen">
+      <div class="welcome-content">
+        <h1 class="welcome-title">WebGate</h1>
+        <p class="welcome-subtitle">Browse the open web freely</p>
+        <form id="welcome-search-form" class="welcome-search">
+          <input type="text" id="welcome-input" placeholder="Search Google or enter a URL" autocomplete="off" spellcheck="false" autofocus>
+          <button type="submit">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </button>
+        </form>
+        <div class="quick-links">
+          <a href="#" data-url="https://www.google.com" class="quick-link">
+            <div class="quick-icon" style="background:#4285f4">G</div>
+            <span>Google</span>
+          </a>
+          <a href="#" data-url="https://en.wikipedia.org" class="quick-link">
+            <div class="quick-icon" style="background:#636466">W</div>
+            <span>Wikipedia</span>
+          </a>
+          <a href="#" data-url="https://news.ycombinator.com" class="quick-link">
+            <div class="quick-icon" style="background:#ff6600">Y</div>
+            <span>Hacker News</span>
+          </a>
+          <a href="#" data-url="https://www.reddit.com" class="quick-link">
+            <div class="quick-icon" style="background:#ff4500">R</div>
+            <span>Reddit</span>
+          </a>
+          <a href="#" data-url="https://stackoverflow.com" class="quick-link">
+            <div class="quick-icon" style="background:#f48024">S</div>
+            <span>Stack Overflow</span>
+          </a>
+          <a href="#" data-url="https://www.youtube.com" class="quick-link">
+            <div class="quick-icon" style="background:#ff0000">Y</div>
+            <span>YouTube</span>
+          </a>
+        </div>
+      </div>
+    </main>
+
+    <!-- Content Frame -->
+    <div id="content-frame" class="hidden">
+      <iframe id="proxy-frame" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+    </div>
+
+    <!-- Error Screen -->
+    <div id="error-screen" class="hidden">
+      <div class="error-content">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <h2>Failed to load page</h2>
+        <p id="error-message">An unknown error occurred.</p>
+        <button id="error-retry" class="retry-btn">Try Again</button>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <h2>Settings</h2>
+        <div class="setting-group">
+          <label for="settings-worker-url">Proxy Worker URL</label>
+          <input type="url" id="settings-worker-url" placeholder="https://your-proxy.workers.dev">
+        </div>
+        <div class="setting-group">
+          <label>
+            <input type="checkbox" id="settings-rewrite-links"> Rewrite links to stay in proxy
+          </label>
+        </div>
+        <div class="setting-group">
+          <label>
+            <input type="checkbox" id="settings-strip-scripts"> Strip JavaScript (safer but breaks interactive sites)
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="settings-cancel" class="btn-secondary">Cancel</button>
+          <button id="settings-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
