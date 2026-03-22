@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.5 — Vercel Serverless Proxy
+ * WebGate v1.2.6 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.2.5' });
+    return res.status(200).json({ status: 'ok', version: '1.2.6' });
   }
 
   const targetUrl = req.query.url;
@@ -107,19 +107,6 @@ export default async function handler(req, res) {
 
       res.setHeader('Content-Type', ct);
       return res.status(resp.status).send(text);
-    }
-
-    // ── JavaScript: rewrite common URL patterns ──
-    const isJs = ct.includes('javascript') || ct.includes('ecmascript');
-    if (isJs) {
-      const buf = Buffer.from(await resp.arrayBuffer());
-      if (buf.length > MAX_SIZE) {
-        return res.status(413).json({ error: 'Response too large' });
-      }
-      let js = buf.toString('utf-8');
-      js = rewriteJsUrls(js, target, PROXY);
-      res.setHeader('Content-Type', ct);
-      return res.status(resp.status).send(js);
     }
 
     // ── m3u8/HLS playlists and manifests: rewrite URLs ──

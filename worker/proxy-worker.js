@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.5 — Cloudflare Workers Proxy
+ * WebGate v1.2.6 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.5' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.6' }));
       }
 
       let target;
@@ -82,13 +82,12 @@ export default {
 
       const isHtml = ct.includes('text/html');
       const isCss = ct.includes('text/css');
-      const isJs = ct.includes('javascript') || ct.includes('ecmascript');
 
       // m3u8/HLS playlists and DASH manifests
       const isManifest = ct.includes('mpegurl') || ct.includes('m3u8') ||
         ct.includes('dash+xml') || targetUrl.match(/\.(m3u8|mpd)(\?|$)/i);
 
-      if (isHtml || isCss || isJs || isManifest) {
+      if (isHtml || isCss || isManifest) {
         const buf = await resp.arrayBuffer();
         let text = new TextDecoder().decode(buf);
 
@@ -96,10 +95,8 @@ export default {
           text = rewriteHtml(text, target, PROXY);
         } else if (isCss) {
           text = rewriteCss(text, target, PROXY);
-        } else if (isManifest) {
-          text = rewriteManifest(text, target, PROXY);
         } else {
-          text = rewriteJsUrls(text, target, PROXY);
+          text = rewriteManifest(text, target, PROXY);
         }
 
         return handleCors(request, new Response(text, { status: resp.status, headers: respHeaders }));
