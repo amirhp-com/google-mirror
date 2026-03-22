@@ -198,13 +198,25 @@ function rewriteHtml(html, base, PROXY) {
   var BASE = ${JSON.stringify(base.href)};
   var PROXY = ${JSON.stringify(PROXY)};
 
+  function shouldProxy(u) {
+    return u && !u.startsWith('data:') && !u.startsWith('blob:') && !u.startsWith('javascript:') && u !== '#' && u.indexOf('/api/proxy') === -1 && u.indexOf('?url=') === -1;
+  }
+
+  function toProxy(u) {
+    if (!shouldProxy(u)) return u;
+    try {
+      var abs = /^https?:\\/\\//.test(u) ? u : new URL(u, BASE).href;
+      return PROXY + '?url=' + encodeURIComponent(abs);
+    } catch(e) { return u; }
+  }
+
   // Intercept fetch()
   var _fetch = window.fetch;
   window.fetch = function(input, init) {
-    if (typeof input === 'string' && /^https?:\\/\\//.test(input)) {
-      input = PROXY + '?url=' + encodeURIComponent(input);
-    } else if (input instanceof Request && /^https?:\\/\\//.test(input.url)) {
-      input = new Request(PROXY + '?url=' + encodeURIComponent(input.url), input);
+    if (typeof input === 'string') {
+      input = toProxy(input);
+    } else if (input instanceof Request && shouldProxy(input.url)) {
+      input = new Request(toProxy(input.url), input);
     }
     return _fetch.call(this, input, init);
   };
@@ -212,40 +224,90 @@ function rewriteHtml(html, base, PROXY) {
   // Intercept XMLHttpRequest
   var _xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
-    if (typeof url === 'string' && /^https?:\\/\\//.test(url)) {
-      url = PROXY + '?url=' + encodeURIComponent(url);
-    }
+    if (typeof url === 'string') url = toProxy(url);
     return _xhrOpen.apply(this, [method, url].concat(Array.prototype.slice.call(arguments, 2)));
   };
 
   // Intercept window.open()
   var _wopen = window.open;
   window.open = function(url) {
-    if (url && /^https?:\\/\\//.test(url)) {
+    if (url && shouldProxy(url)) {
+      try { url = /^https?:\\/\\//.test(url) ? url : new URL(url, BASE).href; } catch(e) {}
       window.parent.postMessage({ type: 'navigate', url: url }, '*');
       return null;
     }
     return _wopen.apply(this, arguments);
   };
 
-  // Intercept Element.src sets
-  ['HTMLImageElement','HTMLScriptElement','HTMLIFrameElement','HTMLSourceElement','HTMLMediaElement'].forEach(function(t) {
+  // Intercept Element.src sets (catches relative URLs too)
+  ['HTMLImageElement','HTMLScriptElement','HTMLIFrameElement','HTMLSourceElement','HTMLMediaElement','HTMLEmbedElement'].forEach(function(t) {
     var ctor = window[t];
     if (!ctor) return;
     var desc = Object.getOwnPropertyDescriptor(ctor.prototype, 'src');
     if (desc && desc.set) {
       Object.defineProperty(ctor.prototype, 'src', {
-        set: function(v) {
-          if (typeof v === 'string' && /^https?:\\/\\//.test(v)) {
-            v = PROXY + '?url=' + encodeURIComponent(v);
-          }
-          desc.set.call(this, v);
-        },
+        set: function(v) { if (typeof v === 'string') v = toProxy(v); desc.set.call(this, v); },
         get: desc.get,
         configurable: true
       });
     }
   });
+
+  // Intercept HTMLLinkElement.href (stylesheets, preloads)
+  var linkDesc = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'href');
+  if (linkDesc && linkDesc.set) {
+    Object.defineProperty(HTMLLinkElement.prototype, 'href', {
+      set: function(v) { if (typeof v === 'string') v = toProxy(v); linkDesc.set.call(this, v); },
+      get: linkDesc.get,
+      configurable: true
+    });
+  }
+
+  // Intercept setAttribute for all dynamic attribute sets
+  var _setAttribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function(name, value) {
+    var n = name.toLowerCase();
+    if ((n === 'src' || n === 'href' || n === 'action' || n === 'srcset' || n === 'poster' || n === 'background') && typeof value === 'string') {
+      if (n === 'srcset') {
+        value = value.split(',').map(function(entry) {
+          var parts = entry.trim().split(/\\s+/);
+          if (parts[0]) parts[0] = toProxy(parts[0]);
+          return parts.join(' ');
+        }).join(', ');
+      } else {
+        value = toProxy(value);
+      }
+    }
+    return _setAttribute.call(this, name, value);
+  };
+
+  // MutationObserver: catch dynamically added elements
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mut) {
+      mut.addedNodes.forEach(function(node) {
+        if (node.nodeType !== 1) return;
+        rewriteNode(node);
+        if (node.querySelectorAll) {
+          node.querySelectorAll('[src],[href],[srcset],[poster],[action],[background]').forEach(rewriteNode);
+        }
+      });
+    });
+  });
+  function rewriteNode(el) {
+    ['src','href','poster','action','background'].forEach(function(attr) {
+      var v = el.getAttribute && el.getAttribute(attr);
+      if (v && shouldProxy(v)) el.setAttribute(attr, toProxy(v));
+    });
+    var ss = el.getAttribute && el.getAttribute('srcset');
+    if (ss && shouldProxy(ss)) {
+      el.setAttribute('srcset', ss.split(',').map(function(entry) {
+        var parts = entry.trim().split(/\\s+/);
+        if (parts[0]) parts[0] = toProxy(parts[0]);
+        return parts.join(' ');
+      }).join(', '));
+    }
+  }
+  observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
 
   document.addEventListener('click', function(e) {
     var a = e.target.closest('a');
