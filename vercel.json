@@ -1,5 +1,5 @@
 {
-  "buildCommand": "",
+  "buildCommand": "npm run build",
   "outputDirectory": ".",
   "functions": {
     "api/proxy.js": {
