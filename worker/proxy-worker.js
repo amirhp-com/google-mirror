@@ -1,5 +1,5 @@
 /**
- * WebGate v1.1.0 — Cloudflare Workers Proxy
+ * WebGate v1.2.0 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.1.0' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.0' }));
       }
 
       let target;
