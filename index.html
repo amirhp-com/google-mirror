@@ -163,12 +163,53 @@
         </div>
 
         <div class="settings-help">
-          <h3>Help</h3>
-          <ul>
-            <li><strong>Vercel</strong> — Default backend. Deploys automatically with the app.</li>
-            <li><strong>Cloudflare Workers</strong> — Optional alternative. Faster in some regions, free tier available.</li>
-            <li><strong>Keyboard shortcuts:</strong> <kbd>Alt+Left</kbd> Back, <kbd>Alt+Right</kbd> Forward, <kbd>Ctrl+L</kbd> Focus URL bar.</li>
+          <h3>How to deploy on Vercel (easiest)</h3>
+          <ol class="help-steps">
+            <li>Click the <strong>Deploy on Vercel</strong> button below</li>
+            <li>Sign in with your GitHub account</li>
+            <li>Click <strong>Deploy</strong> — that's it! Your proxy URL will be auto-detected</li>
+          </ol>
+
+          <h3>How to set up Cloudflare Workers (optional)</h3>
+          <p class="help-intro">Cloudflare Workers is a free alternative backend. It can be faster in some regions and supports larger file downloads.</p>
+          <ol class="help-steps">
+            <li>
+              <strong>Install Node.js</strong> if you don't have it:<br>
+              Download from <a href="https://nodejs.org" target="_blank">nodejs.org</a> and install it
+            </li>
+            <li>
+              <strong>Clone the repo</strong> — open your Terminal (Mac) or Command Prompt (Windows) and run:<br>
+              <code class="help-code">git clone https://github.com/amirhp-com/google-mirror.git</code>
+            </li>
+            <li>
+              <strong>Go into the folder:</strong><br>
+              <code class="help-code">cd google-mirror</code>
+            </li>
+            <li>
+              <strong>Log in to Cloudflare:</strong><br>
+              <code class="help-code">npx wrangler login</code><br>
+              This opens your browser — sign in or create a free Cloudflare account
+            </li>
+            <li>
+              <strong>Deploy the worker:</strong><br>
+              <code class="help-code">npx wrangler deploy worker/proxy-worker.js --name webgate-proxy</code>
+            </li>
+            <li>
+              <strong>Copy your Worker URL</strong> — it will look like:<br>
+              <code class="help-code">https://webgate-proxy.your-name.workers.dev</code>
+            </li>
+            <li>
+              <strong>Paste it</strong> in the "Cloudflare Worker URL" field above, and check "Use Cloudflare Worker as proxy backend"
+            </li>
+          </ol>
+
+          <h3>Keyboard shortcuts</h3>
+          <ul class="help-shortcuts">
+            <li><kbd>Alt</kbd> + <kbd>Left</kbd> — Go back</li>
+            <li><kbd>Alt</kbd> + <kbd>Right</kbd> — Go forward</li>
+            <li><kbd>Ctrl</kbd> + <kbd>L</kbd> — Focus URL bar</li>
           </ul>
+
           <div class="settings-links">
             <a href="https://github.com/amirhp-com/google-mirror" target="_blank">GitHub</a>
             <span>&middot;</span>
