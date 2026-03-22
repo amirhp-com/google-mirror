@@ -315,6 +315,29 @@ input { font-family: inherit; }
 
 .quick-link span { font-size: 12px; }
 
+.version {
+  margin-top: 40px;
+  font-size: 12px;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.version-info {
+  margin-top: 20px;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  text-align: center;
+}
+
+/* ===== Secure Icon ===== */
+.secure-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
 /* ===== Content Frame ===== */
 #content-frame {
   flex: 1;

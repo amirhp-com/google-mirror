@@ -1,16 +1,17 @@
 /**
- * WebGate — Client-side proxy browser
- * The server (api/proxy.js) handles all URL rewriting.
- * This client just manages navigation, history, and the UI.
+ * WebGate v1.0.0 — Virtual Browser
+ *
+ * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
+ * NOT from blob URLs. This means the browser naturally resolves all
+ * sub-resources (CSS, JS, images, fonts) through the proxy server,
+ * since they're rewritten to /api/proxy?url=... paths server-side.
  */
 (function () {
   'use strict';
 
+  const VERSION = '1.0.0';
   const STORAGE_KEY = 'webgate_settings';
-  const defaults = {
-    workerUrl: '',
-    stripScripts: false,
-  };
+  const defaults = { workerUrl: '' };
 
   let settings = loadSettings();
   let navHistory = [];
@@ -29,6 +30,7 @@
   const welcomeInput  = $('#welcome-input');
   const urlForm       = $('#url-form');
   const welcomeForm   = $('#welcome-search-form');
+  const btnHome       = $('#btn-home');
   const btnBack       = $('#btn-back');
   const btnForward    = $('#btn-forward');
   const btnReload     = $('#btn-reload');
@@ -90,6 +92,15 @@
     loadingBar.classList.add('hidden');
   }
 
+  function showHome() {
+    welcomeScreen.classList.remove('hidden');
+    contentFrame.classList.add('hidden');
+    errorScreen.classList.add('hidden');
+    loadingBar.classList.add('hidden');
+    urlInput.value = '';
+    currentUrl = '';
+  }
+
   function showContent() {
     welcomeScreen.classList.add('hidden');
     errorScreen.classList.add('hidden');
@@ -119,6 +130,11 @@
     return 'https://www.google.com/search?q=' + encodeURIComponent(input);
   }
 
+  function buildProxyUrl(targetUrl) {
+    const base = settings.workerUrl.replace(/\/+$/, '');
+    return `${base}?url=${encodeURIComponent(targetUrl)}`;
+  }
+
   // ───── Navigation ─────
   async function navigate(rawInput) {
     const url = normalizeUrl(rawInput);
@@ -134,53 +150,18 @@
     historyIndex = navHistory.length - 1;
     updateNavButtons();
 
-    await loadPage(url);
+    loadPage(url);
   }
 
-  async function loadPage(url) {
+  function loadPage(url) {
     showLoading();
     showContent();
 
-    try {
-      const base = settings.workerUrl.replace(/\/+$/, '');
-      const proxyUrl = `${base}?url=${encodeURIComponent(url)}`;
-      const response = await fetch(proxyUrl);
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        let errMsg = `Proxy returned ${response.status}: ${response.statusText}`;
-        try {
-          const json = JSON.parse(text);
-          if (json.error) errMsg = json.error;
-        } catch {}
-        throw new Error(errMsg);
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-
-      if (contentType.includes('text/html') || contentType.includes('text/plain')) {
-        let html = await response.text();
-
-        if (settings.stripScripts) {
-          html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-        }
-
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const blobUrl = URL.createObjectURL(blob);
-        proxyFrame.src = blobUrl;
-        proxyFrame.addEventListener('load', () => URL.revokeObjectURL(blobUrl), { once: true });
-      } else {
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        proxyFrame.src = blobUrl;
-        proxyFrame.addEventListener('load', () => URL.revokeObjectURL(blobUrl), { once: true });
-      }
-
-      hideLoading();
-    } catch (err) {
-      hideLoading();
-      showError(err.message || 'Failed to load page.');
-    }
+    // Load the page directly through the proxy in the iframe.
+    // The server rewrites all URLs to go through /api/proxy,
+    // so the browser fetches CSS/JS/images through the proxy automatically.
+    const proxyUrl = buildProxyUrl(url);
+    proxyFrame.src = proxyUrl;
   }
 
   function goBack() {
@@ -210,6 +191,7 @@
 
   // ───── Events ─────
   function bindEvents() {
+    // Setup
     $('#save-worker-btn').addEventListener('click', () => {
       const url = $('#worker-url-input').value.trim();
       if (!url) return;
@@ -218,39 +200,54 @@
       showBrowser();
     });
 
+    // URL bar
     urlForm.addEventListener('submit', (e) => { e.preventDefault(); navigate(urlInput.value); });
 
+    // Welcome search
     welcomeForm.addEventListener('submit', (e) => {
       e.preventDefault();
       navigate(welcomeInput.value);
       welcomeInput.value = '';
     });
 
+    // Quick links
     document.querySelectorAll('.quick-link').forEach((link) => {
       link.addEventListener('click', (e) => { e.preventDefault(); navigate(link.dataset.url); });
     });
 
+    // Nav buttons
+    btnHome.addEventListener('click', showHome);
     btnBack.addEventListener('click', goBack);
     btnForward.addEventListener('click', goForward);
     btnReload.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
     errorRetry.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
 
+    // Iframe load/error events
+    proxyFrame.addEventListener('load', () => {
+      hideLoading();
+    });
+
+    proxyFrame.addEventListener('error', () => {
+      hideLoading();
+      showError('Failed to load page.');
+    });
+
+    // Listen for navigation messages from proxied pages (injected by server)
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'navigate' && e.data.url) {
+        navigate(e.data.url);
+      }
+    });
+
+    // Settings
     btnSettings.addEventListener('click', openSettings);
     $('#settings-cancel').addEventListener('click', closeSettings);
     $('.modal-backdrop').addEventListener('click', closeSettings);
     $('#settings-save').addEventListener('click', () => {
       settings.workerUrl = $('#settings-worker-url').value.trim();
-      settings.stripScripts = $('#settings-strip-scripts').checked;
       saveSettings();
       closeSettings();
       if (!settings.workerUrl) showSetup();
-    });
-
-    // Listen for navigation from proxied pages
-    window.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'navigate' && e.data.url) {
-        navigate(e.data.url);
-      }
     });
 
     // Keyboard shortcuts
@@ -263,7 +260,6 @@
 
   function openSettings() {
     $('#settings-worker-url').value = settings.workerUrl;
-    $('#settings-strip-scripts').checked = settings.stripScripts;
     settingsModal.classList.remove('hidden');
   }
 
