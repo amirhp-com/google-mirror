@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.11 — Virtual Browser
+ * WebGate v1.2.12 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.2.11';
+  const VERSION = '1.2.12';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '', cfWorkerUrl: '', useCf: false };
   const HISTORY_KEY = 'webgate_history';
@@ -276,7 +276,7 @@
     btnForward.addEventListener('click', goForward);
     btnReload.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
     btnStop.addEventListener('click', () => {
-      proxyFrame.src = 'about:blank';
+      try { proxyFrame.contentWindow.stop(); } catch(e) {}
       hideLoading();
     });
     errorRetry.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
