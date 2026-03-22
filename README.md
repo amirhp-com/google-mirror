@@ -1,57 +1,74 @@
-# WebGate — Browse Freely
+# WebGate — Browse the Web Freely
 
-A web proxy that lets you access blocked websites. Deploy to **Vercel** (free) — one deploy gives you both the frontend UI and the proxy backend.
+A free, open-source web proxy you can deploy in one click. Access Google, Wikipedia, YouTube, and any blocked website through your own private Vercel instance.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/amirhp-com/google-mirror)
 
 ## How It Works
 
 ```
-Your Browser  →  Vercel (UI + API proxy)  →  Target Website (Google, etc.)
+Your Browser  →  Your Vercel App (UI + proxy)  →  Google / any website
 ```
 
-The frontend runs on Vercel. The `/api/proxy` serverless function fetches blocked pages on your behalf and returns the content to your browser.
+Vercel serves both the frontend UI and a serverless proxy function (`/api/proxy`). When you enter a URL, the proxy fetches the page for you and sends it back — bypassing your ISP's filters entirely.
 
-## Deploy (5 minutes)
+## Deploy Your Own (2 minutes)
 
-### Option A: One-Click Deploy
+### 1. Click the button
 
-1. Push this repo to GitHub
-2. Go to [vercel.com](https://vercel.com) → **New Project** → Import your GitHub repo
-3. Click **Deploy** (no settings to change — it works out of the box)
-4. Open your `https://your-project.vercel.app` URL and start browsing
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/amirhp-com/google-mirror)
 
-### Option B: CLI Deploy
+This will:
+- Fork the repo to your GitHub account
+- Create a Vercel project
+- Deploy it automatically
+
+### 2. Open your app
+
+Once deployed, Vercel gives you a URL like `https://google-mirror-xxxxx.vercel.app`. Open it and start browsing. No configuration needed — the proxy auto-detects itself.
+
+That's it. You're done.
+
+---
+
+### Alternative: CLI Deploy
+
+If you prefer the command line:
 
 ```bash
-npm i -g vercel
+git clone https://github.com/amirhp-com/google-mirror.git
 cd google-mirror
-vercel --prod
+npx vercel --prod
 ```
-
-That's it. The proxy auto-detects when hosted on Vercel — no configuration needed.
 
 ## Features
 
-- Google search — type search terms directly in the URL bar
-- Link rewriting — stay inside the proxy while clicking links
-- Images and CSS proxied through the API so pages render correctly
-- Back/Forward navigation with history
-- Quick-launch shortcuts (Google, Wikipedia, Reddit, YouTube, etc.)
-- Settings to toggle link rewriting and script stripping
-- Mobile responsive
-- Keyboard shortcuts: `Alt+←` back, `Alt+→` forward, `Ctrl+L` focus URL bar
+- **Search Google** — type search terms directly in the URL bar
+- **Link rewriting** — clicking links keeps you inside the proxy
+- **Full resource proxying** — images, CSS, and scripts load through the proxy
+- **Navigation** — back, forward, reload with full history
+- **Quick shortcuts** — Google, Wikipedia, Reddit, YouTube, Hacker News, Stack Overflow
+- **Settings** — toggle link rewriting, script stripping
+- **Mobile friendly** — fully responsive design
+- **Keyboard shortcuts** — `Alt+←/→` navigate, `Ctrl+L` focus URL bar
 
 ## Limitations
 
-- Heavy SPAs (React/Vue apps) may not render perfectly
+- JavaScript-heavy SPAs (React, Vue) may not render perfectly
 - WebSocket connections are not proxied
-- Some sites detect and block proxied access
-- Video streaming may hit Vercel's response size limits on free tier
-- Vercel free tier: 100GB bandwidth/month, 10s function timeout (serverless)
+- Some sites detect and block proxy access
+- Video streaming may hit size limits on Vercel's free tier
 
-## Using with GitHub Pages (split deploy)
+## Vercel Free Tier Limits
 
-If you prefer GitHub Pages for the frontend:
+| Resource | Limit |
+|----------|-------|
+| Bandwidth | 100 GB/month |
+| Serverless function duration | 10 seconds |
+| Deployments | Unlimited |
 
-1. Deploy this repo to GitHub Pages (the Actions workflow is included)
-2. Deploy just the `api/` folder separately to Vercel
-3. Open your GitHub Pages site → Settings → paste your Vercel URL (`https://your-project.vercel.app/api/proxy`)
+More than enough for personal browsing.
+
+## License
+
+MIT — free to use, modify, and share.
