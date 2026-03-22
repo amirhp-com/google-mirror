@@ -1,77 +1,57 @@
-# WebGate — Browse Freely via GitHub Pages
+# WebGate — Browse Freely
 
-A web proxy that lets you access blocked websites through GitHub Pages + a free Cloudflare Worker backend.
+A web proxy that lets you access blocked websites. Deploy to **Vercel** (free) — one deploy gives you both the frontend UI and the proxy backend.
 
 ## How It Works
 
 ```
-Your Browser  →  GitHub Pages (UI)  →  Cloudflare Worker (proxy)  →  Target Website
+Your Browser  →  Vercel (UI + API proxy)  →  Target Website (Google, etc.)
 ```
 
-GitHub Pages serves the frontend. The Cloudflare Worker (free tier, 100k requests/day) fetches blocked pages on your behalf and returns the content.
+The frontend runs on Vercel. The `/api/proxy` serverless function fetches blocked pages on your behalf and returns the content to your browser.
 
-## Setup (10 minutes)
+## Deploy (5 minutes)
 
-### Step 1: Deploy the Frontend (GitHub Pages)
+### Option A: One-Click Deploy
 
-1. Create a new GitHub repo (or use this one)
-2. Push this code to the `main` branch
-3. Go to **Settings → Pages → Source** → select **GitHub Actions**
-4. The site auto-deploys on every push to `main`
+1. Push this repo to GitHub
+2. Go to [vercel.com](https://vercel.com) → **New Project** → Import your GitHub repo
+3. Click **Deploy** (no settings to change — it works out of the box)
+4. Open your `https://your-project.vercel.app` URL and start browsing
 
-### Step 2: Deploy the Proxy Worker (Cloudflare — Free)
+### Option B: CLI Deploy
 
-1. Create a free account at [cloudflare.com](https://dash.cloudflare.com/sign-up)
-2. Install Wrangler CLI:
-   ```bash
-   npm install -g wrangler
-   ```
-3. Login to Cloudflare:
-   ```bash
-   wrangler login
-   ```
-4. Deploy the worker:
-   ```bash
-   cd worker
-   npx wrangler deploy
-   ```
-5. Wrangler will output your worker URL, something like:
-   ```
-   https://webgate-proxy.YOUR_SUBDOMAIN.workers.dev
-   ```
+```bash
+npm i -g vercel
+cd google-mirror
+vercel --prod
+```
 
-### Step 3: Connect Frontend to Worker
-
-1. Open your GitHub Pages site
-2. Paste your Cloudflare Worker URL in the setup screen
-3. Start browsing!
+That's it. The proxy auto-detects when hosted on Vercel — no configuration needed.
 
 ## Features
 
-- Google search integration — type search terms directly
+- Google search — type search terms directly in the URL bar
 - Link rewriting — stay inside the proxy while clicking links
+- Images and CSS proxied through the API so pages render correctly
 - Back/Forward navigation with history
-- Quick-launch shortcuts (Google, Wikipedia, Reddit, etc.)
-- Settings panel to adjust behavior
+- Quick-launch shortcuts (Google, Wikipedia, Reddit, YouTube, etc.)
+- Settings to toggle link rewriting and script stripping
 - Mobile responsive
 - Keyboard shortcuts: `Alt+←` back, `Alt+→` forward, `Ctrl+L` focus URL bar
 
-## Security Notes
-
-- The Cloudflare Worker has CORS set to allow all origins by default. For production, edit `ALLOWED_ORIGINS` in `worker/proxy-worker.js` to only allow your GitHub Pages domain.
-- The `BLOCKED_DOMAINS` array in the worker lets you block specific target domains if needed.
-- The iframe uses `sandbox="allow-scripts allow-forms allow-same-origin"` to limit what proxied pages can do.
-
 ## Limitations
 
-- JavaScript-heavy SPAs (React/Vue apps) may not work perfectly since resources load from different origins
+- Heavy SPAs (React/Vue apps) may not render perfectly
 - WebSocket connections are not proxied
-- Some sites detect and block proxy access
-- Videos/streaming may not work due to Cloudflare Worker size limits (10MB per response on free tier)
+- Some sites detect and block proxied access
+- Video streaming may hit Vercel's response size limits on free tier
+- Vercel free tier: 100GB bandwidth/month, 10s function timeout (serverless)
 
-## Free Tier Limits
+## Using with GitHub Pages (split deploy)
 
-| Service | Free Limit |
-|---------|------------|
-| GitHub Pages | 100GB bandwidth/month |
-| Cloudflare Workers | 100,000 requests/day |
+If you prefer GitHub Pages for the frontend:
+
+1. Deploy this repo to GitHub Pages (the Actions workflow is included)
+2. Deploy just the `api/` folder separately to Vercel
+3. Open your GitHub Pages site → Settings → paste your Vercel URL (`https://your-project.vercel.app/api/proxy`)

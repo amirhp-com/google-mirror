@@ -1,6 +1,6 @@
 /**
  * WebGate — Client-side proxy browser
- * Communicates with a Cloudflare Worker to fetch and display blocked pages.
+ * Communicates with a Vercel serverless function to fetch and display blocked pages.
  */
 (function () {
   'use strict';
@@ -14,7 +14,7 @@
   };
 
   let settings = loadSettings();
-  let history = [];
+  let navHistory = [];
   let historyIndex = -1;
   let currentUrl = '';
 
@@ -41,8 +41,21 @@
 
   // ───── Init ─────
   function init() {
+    // Auto-detect: if hosted on Vercel, the API is on the same origin
     if (!settings.workerUrl) {
-      showSetup();
+      const sameOriginProxy = window.location.origin + '/api/proxy';
+      // Test if same-origin proxy exists
+      fetch(sameOriginProxy)
+        .then(res => {
+          if (res.ok) {
+            settings.workerUrl = sameOriginProxy;
+            saveSettings();
+            showBrowser();
+          } else {
+            showSetup();
+          }
+        })
+        .catch(() => showSetup());
     } else {
       showBrowser();
     }
@@ -135,13 +148,17 @@
     urlInput.value = url;
 
     // Push to history
-    if (historyIndex < history.length - 1) {
-      history = history.slice(0, historyIndex + 1);
+    if (historyIndex < navHistory.length - 1) {
+      navHistory = navHistory.slice(0, historyIndex + 1);
     }
-    history.push(url);
-    historyIndex = history.length - 1;
+    navHistory.push(url);
+    historyIndex = navHistory.length - 1;
     updateNavButtons();
 
+    await loadPage(url);
+  }
+
+  async function loadPage(url) {
     showLoading();
     showContent();
 
@@ -150,7 +167,13 @@
       const response = await fetch(proxyUrl);
 
       if (!response.ok) {
-        throw new Error(`Proxy returned ${response.status}: ${response.statusText}`);
+        const text = await response.text().catch(() => '');
+        let errMsg = `Proxy returned ${response.status}: ${response.statusText}`;
+        try {
+          const json = JSON.parse(text);
+          if (json.error) errMsg = json.error;
+        } catch {}
+        throw new Error(errMsg);
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -169,8 +192,6 @@
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
         const blobUrl = URL.createObjectURL(blob);
         proxyFrame.src = blobUrl;
-
-        // Clean up old blob URLs
         proxyFrame.addEventListener('load', () => URL.revokeObjectURL(blobUrl), { once: true });
       } else {
         // For non-HTML (images, PDFs, etc.), load directly via proxy
@@ -183,19 +204,20 @@
       hideLoading();
     } catch (err) {
       hideLoading();
-      showError(err.message || 'Failed to load page. Check your proxy worker URL.');
+      showError(err.message || 'Failed to load page. Check your proxy URL in settings.');
     }
   }
 
   function buildProxyUrl(targetUrl) {
     const base = settings.workerUrl.replace(/\/+$/, '');
-    return `${base}/?url=${encodeURIComponent(targetUrl)}`;
+    return `${base}?url=${encodeURIComponent(targetUrl)}`;
   }
 
   // ───── HTML Rewriting ─────
   function rewriteHtml(html, baseUrl) {
     const base = new URL(baseUrl);
     const origin = base.origin;
+    const proxyBase = settings.workerUrl.replace(/\/+$/, '');
 
     // Inject <base> tag so relative URLs resolve correctly
     if (!/<base\s/i.test(html)) {
@@ -203,7 +225,6 @@
     }
 
     // Rewrite absolute links to go through our proxy
-    // Replace href="/path" with onclick handlers
     html = html.replace(
       /(<a\s[^>]*?)href\s*=\s*"((?:https?:\/\/)[^"]+)"/gi,
       (match, prefix, href) => {
@@ -219,21 +240,39 @@
       }
     );
 
-    // Rewrite relative src attributes to absolute
+    // Rewrite relative src attributes to absolute, then route through proxy
     html = html.replace(
       /(src\s*=\s*")(?!https?:\/\/|data:|blob:|javascript:)(\/?)([^"]*)/gi,
       (match, prefix, slash, path) => {
         const absolute = slash ? `${origin}/${path}` : `${origin}${base.pathname.replace(/[^/]*$/, '')}${path}`;
-        return `${prefix}${absolute}`;
+        return `${prefix}${proxyBase}?url=${encodeURIComponent(absolute)}`;
       }
     );
 
-    // Rewrite relative href for CSS/links (not anchor tags, those are handled above)
+    // Rewrite relative href for CSS/links (not anchor tags)
     html = html.replace(
       /(<link\s[^>]*?)href\s*=\s*"(?!https?:\/\/|data:|blob:|#)(\/?)([^"]*)/gi,
       (match, prefix, slash, path) => {
         const absolute = slash ? `${origin}/${path}` : `${origin}${base.pathname.replace(/[^/]*$/, '')}${path}`;
-        return `${prefix}href="${absolute}`;
+        return `${prefix}href="${proxyBase}?url=${encodeURIComponent(absolute)}`;
+      }
+    );
+
+    // Also proxy absolute src URLs (images, scripts from CDNs etc.)
+    html = html.replace(
+      /(src\s*=\s*")(https?:\/\/[^"]+)"/gi,
+      (match, prefix, absUrl) => {
+        return `${prefix}${proxyBase}?url=${encodeURIComponent(absUrl)}"`;
+      }
+    );
+
+    // Also proxy absolute CSS href URLs
+    html = html.replace(
+      /(<link\s[^>]*?href\s*=\s*")(https?:\/\/[^"]+)"/gi,
+      (match, prefix, absUrl) => {
+        // Don't double-proxy URLs already going through our proxy
+        if (absUrl.includes('/api/proxy')) return match;
+        return `${prefix}${proxyBase}?url=${encodeURIComponent(absUrl)}"`;
       }
     );
 
@@ -285,49 +324,28 @@
   function goBack() {
     if (historyIndex > 0) {
       historyIndex--;
-      const url = history[historyIndex];
+      const url = navHistory[historyIndex];
       currentUrl = url;
       urlInput.value = url;
-      loadFromHistory(url);
+      loadPage(url);
       updateNavButtons();
     }
   }
 
   function goForward() {
-    if (historyIndex < history.length - 1) {
+    if (historyIndex < navHistory.length - 1) {
       historyIndex++;
-      const url = history[historyIndex];
+      const url = navHistory[historyIndex];
       currentUrl = url;
       urlInput.value = url;
-      loadFromHistory(url);
+      loadPage(url);
       updateNavButtons();
-    }
-  }
-
-  async function loadFromHistory(url) {
-    showLoading();
-    showContent();
-    try {
-      const proxyUrl = buildProxyUrl(url);
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error(`Proxy returned ${response.status}`);
-      let html = await response.text();
-      if (settings.rewriteLinks) html = rewriteHtml(html, url);
-      if (settings.stripScripts) html = stripScriptTags(html);
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-      const blobUrl = URL.createObjectURL(blob);
-      proxyFrame.src = blobUrl;
-      proxyFrame.addEventListener('load', () => URL.revokeObjectURL(blobUrl), { once: true });
-      hideLoading();
-    } catch (err) {
-      hideLoading();
-      showError(err.message);
     }
   }
 
   function updateNavButtons() {
     btnBack.disabled = historyIndex <= 0;
-    btnForward.disabled = historyIndex >= history.length - 1;
+    btnForward.disabled = historyIndex >= navHistory.length - 1;
   }
 
   // ───── Event Binding ─────
@@ -366,12 +384,12 @@
     btnBack.addEventListener('click', goBack);
     btnForward.addEventListener('click', goForward);
     btnReload.addEventListener('click', () => {
-      if (currentUrl) navigate(currentUrl);
+      if (currentUrl) loadPage(currentUrl);
     });
 
     // Error retry
     errorRetry.addEventListener('click', () => {
-      if (currentUrl) navigate(currentUrl);
+      if (currentUrl) loadPage(currentUrl);
     });
 
     // Settings modal
