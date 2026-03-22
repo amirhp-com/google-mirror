@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.0 — Virtual Browser
+ * WebGate v1.2.1 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.2.0';
+  const VERSION = '1.2.1';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '' };
 
@@ -140,8 +140,23 @@
     return `${base}?url=${encodeURIComponent(targetUrl)}`;
   }
 
+  // Strip proxy prefix from URL to get the clean original URL
+  function stripProxyPrefix(url) {
+    if (!url) return url;
+    // Match patterns like: https://proxy.vercel.app/api/proxy?url=ENCODED_URL
+    // or any ?url= pattern from Cloudflare workers
+    const match = url.match(/[?&]url=([^&]+)/);
+    if (match) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch { return url; }
+    }
+    return url;
+  }
+
   // ───── Navigation ─────
   async function navigate(rawInput) {
+    rawInput = stripProxyPrefix(rawInput);
     const url = normalizeUrl(rawInput);
     if (!url) return;
 

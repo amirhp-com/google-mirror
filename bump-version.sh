@@ -11,10 +11,7 @@ FILES=(
 )
 
 # Get current version from app.js
-CURRENT=$(grep -oP "VERSION = '\K[0-9]+\.[0-9]+\.[0-9]+" js/app.js)
-if [ -z "$CURRENT" ]; then
-  CURRENT=$(grep -oE "VERSION = '[0-9]+\.[0-9]+\.[0-9]+" js/app.js | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
-fi
+CURRENT=$(grep -oE "VERSION = '[0-9]+\.[0-9]+\.[0-9]+" js/app.js | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
 
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 
