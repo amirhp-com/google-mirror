@@ -51,6 +51,11 @@ export default async function handler(req, res) {
       'Referer': target.origin + '/',
     };
 
+    // Forward cookies from client to target
+    if (req.headers.cookie) {
+      fetchHeaders['Cookie'] = req.headers.cookie;
+    }
+
     const fetchOpts = {
       method: req.method === 'POST' ? 'POST' : 'GET',
       headers: fetchHeaders,
@@ -69,6 +74,18 @@ export default async function handler(req, res) {
     const ct = resp.headers.get('content-type') || 'application/octet-stream';
     const cc = resp.headers.get('cache-control');
     if (cc) res.setHeader('Cache-Control', cc);
+
+    // Forward Set-Cookie headers from target (rewrite for proxy domain)
+    const setCookies = resp.headers.getSetCookie ? resp.headers.getSetCookie() : [];
+    if (setCookies.length) {
+      const rewritten = setCookies.map(c =>
+        c.replace(/;\s*domain=[^;]*/gi, '')
+         .replace(/;\s*secure/gi, '')
+         .replace(/;\s*samesite=[^;]*/gi, '')
+        + '; SameSite=Lax; Path=/'
+      );
+      res.setHeader('Set-Cookie', rewritten);
+    }
 
     const isHtml = ct.includes('text/html');
     const isCss = ct.includes('text/css');
@@ -147,6 +164,19 @@ function rewriteHtml(html, base, PROXY) {
     return '';
   });
 
+  // 1b. Inject <base href> pointing to the ORIGINAL site so the browser
+  //     resolves any relative URLs we miss against the correct domain,
+  //     not the proxy domain. Our rewritten URLs are full absolute URLs
+  //     so they won't be affected by this <base> tag.
+  const baseTag = `<base href="${escapeHtml(base.href)}">`;
+  if (/<head[^>]*>/i.test(html)) {
+    html = html.replace(/(<head[^>]*>)/i, '$1' + baseTag);
+  } else if (/<html[^>]*>/i.test(html)) {
+    html = html.replace(/(<html[^>]*>)/i, '$1<head>' + baseTag + '</head>');
+  } else {
+    html = baseTag + html;
+  }
+
   // 2. Rewrite ALL src/href/srcset/poster/action/data attributes
   //    This single regex handles both " and ' quoted values for any attribute.
   //    We match the attribute name, then capture the URL.
@@ -161,6 +191,16 @@ function rewriteHtml(html, base, PROXY) {
   html = html.replace(
     /(\b(?:src|href|srcset|poster|data|content|action|background|formaction)\s*=\s*')([^]*?)(')/gi,
     (m, pre, val, post, offset) => rewriteAttr(m, pre, val, post, html, offset, base, PROXY)
+  );
+
+  // Unquoted attributes (e.g., src=script.js)
+  html = html.replace(
+    /(\b(?:src|href|action|background|formaction)\s*=\s*)([^\s>"']+)/gi,
+    (m, pre, val) => {
+      if (!val || val.startsWith('data:') || val.startsWith('#') || val.includes('/api/proxy') || val.startsWith('"') || val.startsWith("'")) return m;
+      const p = px(val, base, PROXY);
+      return p ? pre + '"' + p + '"' : m;
+    }
   );
 
   // 3. Inline style="..." — rewrite url() inside

@@ -42,6 +42,10 @@ export default {
       fetchHeaders.set('Accept-Language', 'en-US,en;q=0.9');
       fetchHeaders.set('Referer', target.origin + '/');
 
+      // Forward cookies from client to target
+      const clientCookies = request.headers.get('cookie');
+      if (clientCookies) fetchHeaders.set('Cookie', clientCookies);
+
       const fetchOpts = {
         method: request.method === 'POST' ? 'POST' : 'GET',
         headers: fetchHeaders,
@@ -60,6 +64,17 @@ export default {
       const respHeaders = new Headers();
       respHeaders.set('Content-Type', ct);
       if (cc) respHeaders.set('Cache-Control', cc);
+
+      // Forward Set-Cookie headers from target (rewrite for proxy domain)
+      const setCookies = resp.headers.getSetCookie ? resp.headers.getSetCookie() : [];
+      setCookies.forEach(c => {
+        respHeaders.append('Set-Cookie',
+          c.replace(/;\s*domain=[^;]*/gi, '')
+           .replace(/;\s*secure/gi, '')
+           .replace(/;\s*samesite=[^;]*/gi, '')
+          + '; SameSite=Lax; Path=/'
+        );
+      });
 
       const isHtml = ct.includes('text/html');
       const isCss = ct.includes('text/css');
@@ -147,6 +162,16 @@ function rewriteHtml(html, base, PROXY) {
     return '';
   });
 
+  // 1b. Inject <base href> pointing to the ORIGINAL site
+  const baseTag = `<base href="${escapeHtml(base.href)}">`;
+  if (/<head[^>]*>/i.test(html)) {
+    html = html.replace(/(<head[^>]*>)/i, '$1' + baseTag);
+  } else if (/<html[^>]*>/i.test(html)) {
+    html = html.replace(/(<html[^>]*>)/i, '$1<head>' + baseTag + '</head>');
+  } else {
+    html = baseTag + html;
+  }
+
   // 2. Rewrite attributes (double-quoted)
   html = html.replace(
     /(\b(?:src|href|srcset|poster|data|content|action|background|formaction)\s*=\s*")([^"]*?)(")/gi,
@@ -157,6 +182,16 @@ function rewriteHtml(html, base, PROXY) {
   html = html.replace(
     /(\b(?:src|href|srcset|poster|data|content|action|background|formaction)\s*=\s*')([^]*?)(')/gi,
     (m, pre, val, post, offset) => rewriteAttr(m, pre, val, post, html, offset, base, PROXY)
+  );
+
+  // Unquoted attributes
+  html = html.replace(
+    /(\b(?:src|href|action|background|formaction)\s*=\s*)([^\s>"']+)/gi,
+    (m, pre, val) => {
+      if (!val || val.startsWith('data:') || val.startsWith('#') || val.includes('?url=') || val.startsWith('"') || val.startsWith("'")) return m;
+      const p = px(val, base, PROXY);
+      return p ? pre + '"' + p + '"' : m;
+    }
   );
 
   // 3. Inline styles
