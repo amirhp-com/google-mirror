@@ -1,15 +1,14 @@
 /**
  * WebGate — Client-side proxy browser
- * Communicates with a Vercel serverless function to fetch and display blocked pages.
+ * The server (api/proxy.js) handles all URL rewriting.
+ * This client just manages navigation, history, and the UI.
  */
 (function () {
   'use strict';
 
-  // ───── State ─────
   const STORAGE_KEY = 'webgate_settings';
   const defaults = {
     workerUrl: '',
-    rewriteLinks: true,
     stripScripts: false,
   };
 
@@ -18,7 +17,6 @@
   let historyIndex = -1;
   let currentUrl = '';
 
-  // ───── DOM Refs ─────
   const $ = (s) => document.querySelector(s);
   const setupPanel    = $('#setup-panel');
   const toolbar       = $('#toolbar');
@@ -41,10 +39,8 @@
 
   // ───── Init ─────
   function init() {
-    // Auto-detect: if hosted on Vercel, the API is on the same origin
     if (!settings.workerUrl) {
       const sameOriginProxy = window.location.origin + '/api/proxy';
-      // Test if same-origin proxy exists
       fetch(sameOriginProxy)
         .then(res => {
           if (res.ok) {
@@ -62,7 +58,6 @@
     bindEvents();
   }
 
-  // ───── Settings Persistence ─────
   function loadSettings() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -76,7 +71,7 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }
 
-  // ───── View Management ─────
+  // ───── Views ─────
   function showSetup() {
     setupPanel.classList.remove('hidden');
     toolbar.classList.add('hidden');
@@ -109,37 +104,22 @@
     errorMessage.textContent = msg;
   }
 
-  function showLoading() {
-    loadingBar.classList.remove('hidden');
-  }
+  function showLoading() { loadingBar.classList.remove('hidden'); }
+  function hideLoading() { loadingBar.classList.add('hidden'); }
 
-  function hideLoading() {
-    loadingBar.classList.add('hidden');
-  }
-
-  // ───── URL Helpers ─────
+  // ───── URL ─────
   function normalizeUrl(input) {
     input = input.trim();
     if (!input) return '';
-
-    // If it looks like a URL (has dot and no spaces), add protocol
     if (/^[\w-]+(\.[\w-]+)+/.test(input) && !input.includes(' ')) {
-      if (!/^https?:\/\//i.test(input)) {
-        input = 'https://' + input;
-      }
+      if (!/^https?:\/\//i.test(input)) input = 'https://' + input;
       return input;
     }
-
-    // If it already has a protocol
-    if (/^https?:\/\//i.test(input)) {
-      return input;
-    }
-
-    // Otherwise treat as Google search
+    if (/^https?:\/\//i.test(input)) return input;
     return 'https://www.google.com/search?q=' + encodeURIComponent(input);
   }
 
-  // ───── Proxy Fetch ─────
+  // ───── Navigation ─────
   async function navigate(rawInput) {
     const url = normalizeUrl(rawInput);
     if (!url) return;
@@ -147,7 +127,6 @@
     currentUrl = url;
     urlInput.value = url;
 
-    // Push to history
     if (historyIndex < navHistory.length - 1) {
       navHistory = navHistory.slice(0, historyIndex + 1);
     }
@@ -163,7 +142,8 @@
     showContent();
 
     try {
-      const proxyUrl = buildProxyUrl(url);
+      const base = settings.workerUrl.replace(/\/+$/, '');
+      const proxyUrl = `${base}?url=${encodeURIComponent(url)}`;
       const response = await fetch(proxyUrl);
 
       if (!response.ok) {
@@ -181,12 +161,8 @@
       if (contentType.includes('text/html') || contentType.includes('text/plain')) {
         let html = await response.text();
 
-        if (settings.rewriteLinks) {
-          html = rewriteHtml(html, url);
-        }
-
         if (settings.stripScripts) {
-          html = stripScriptTags(html);
+          html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
         }
 
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
@@ -194,7 +170,6 @@
         proxyFrame.src = blobUrl;
         proxyFrame.addEventListener('load', () => URL.revokeObjectURL(blobUrl), { once: true });
       } else {
-        // For non-HTML (images, PDFs, etc.), load directly via proxy
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
         proxyFrame.src = blobUrl;
@@ -204,130 +179,16 @@
       hideLoading();
     } catch (err) {
       hideLoading();
-      showError(err.message || 'Failed to load page. Check your proxy URL in settings.');
+      showError(err.message || 'Failed to load page.');
     }
   }
 
-  function buildProxyUrl(targetUrl) {
-    const base = settings.workerUrl.replace(/\/+$/, '');
-    return `${base}?url=${encodeURIComponent(targetUrl)}`;
-  }
-
-  // ───── HTML Rewriting ─────
-  function rewriteHtml(html, baseUrl) {
-    const base = new URL(baseUrl);
-    const origin = base.origin;
-    const proxyBase = settings.workerUrl.replace(/\/+$/, '');
-
-    // Inject <base> tag so relative URLs resolve correctly
-    if (!/<base\s/i.test(html)) {
-      html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${origin}/">`);
-    }
-
-    // Rewrite absolute links to go through our proxy
-    html = html.replace(
-      /(<a\s[^>]*?)href\s*=\s*"((?:https?:\/\/)[^"]+)"/gi,
-      (match, prefix, href) => {
-        return `${prefix}href="#" data-proxy-href="${escapeAttr(href)}" onclick="window.parent.postMessage({type:'navigate',url:'${escapeAttr(href)}'},'*');return false;"`;
-      }
-    );
-
-    // Rewrite form actions
-    html = html.replace(
-      /(<form\s[^>]*?)action\s*=\s*"((?:https?:\/\/)[^"]+)"/gi,
-      (match, prefix, action) => {
-        return `${prefix}action="${escapeAttr(action)}" data-proxy-action="true"`;
-      }
-    );
-
-    // Rewrite relative src attributes to absolute, then route through proxy
-    html = html.replace(
-      /(src\s*=\s*")(?!https?:\/\/|data:|blob:|javascript:)(\/?)([^"]*)/gi,
-      (match, prefix, slash, path) => {
-        const absolute = slash ? `${origin}/${path}` : `${origin}${base.pathname.replace(/[^/]*$/, '')}${path}`;
-        return `${prefix}${proxyBase}?url=${encodeURIComponent(absolute)}`;
-      }
-    );
-
-    // Rewrite relative href for CSS/links (not anchor tags)
-    html = html.replace(
-      /(<link\s[^>]*?)href\s*=\s*"(?!https?:\/\/|data:|blob:|#)(\/?)([^"]*)/gi,
-      (match, prefix, slash, path) => {
-        const absolute = slash ? `${origin}/${path}` : `${origin}${base.pathname.replace(/[^/]*$/, '')}${path}`;
-        return `${prefix}href="${proxyBase}?url=${encodeURIComponent(absolute)}`;
-      }
-    );
-
-    // Also proxy absolute src URLs (images, scripts from CDNs etc.)
-    html = html.replace(
-      /(src\s*=\s*")(https?:\/\/[^"]+)"/gi,
-      (match, prefix, absUrl) => {
-        return `${prefix}${proxyBase}?url=${encodeURIComponent(absUrl)}"`;
-      }
-    );
-
-    // Also proxy absolute CSS href URLs
-    html = html.replace(
-      /(<link\s[^>]*?href\s*=\s*")(https?:\/\/[^"]+)"/gi,
-      (match, prefix, absUrl) => {
-        // Don't double-proxy URLs already going through our proxy
-        if (absUrl.includes('/api/proxy')) return match;
-        return `${prefix}${proxyBase}?url=${encodeURIComponent(absUrl)}"`;
-      }
-    );
-
-    // Inject a small script to capture link clicks and form submissions
-    const interceptScript = `
-    <script>
-      document.addEventListener('click', function(e) {
-        var a = e.target.closest('a[href]');
-        if (a) {
-          var href = a.getAttribute('data-proxy-href') || a.href;
-          if (href && href !== '#' && !href.startsWith('javascript:') && !href.startsWith('blob:')) {
-            e.preventDefault();
-            window.parent.postMessage({ type: 'navigate', url: href }, '*');
-          }
-        }
-      }, true);
-      document.addEventListener('submit', function(e) {
-        var form = e.target;
-        if (form.tagName === 'FORM') {
-          e.preventDefault();
-          var action = form.action || window.location.href;
-          var data = new FormData(form);
-          var params = new URLSearchParams(data).toString();
-          var method = (form.method || 'GET').toUpperCase();
-          if (method === 'GET') {
-            var url = action.split('?')[0] + '?' + params;
-            window.parent.postMessage({ type: 'navigate', url: url }, '*');
-          } else {
-            window.parent.postMessage({ type: 'navigate', url: action, method: 'POST', body: params }, '*');
-          }
-        }
-      }, true);
-    </` + `script>`;
-
-    html = html.replace(/<\/body>/i, interceptScript + '</body>');
-
-    return html;
-  }
-
-  function stripScriptTags(html) {
-    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  }
-
-  function escapeAttr(str) {
-    return str.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-  }
-
-  // ───── Navigation ─────
   function goBack() {
     if (historyIndex > 0) {
       historyIndex--;
-      const url = navHistory[historyIndex];
-      currentUrl = url;
-      urlInput.value = url;
-      loadPage(url);
+      currentUrl = navHistory[historyIndex];
+      urlInput.value = currentUrl;
+      loadPage(currentUrl);
       updateNavButtons();
     }
   }
@@ -335,10 +196,9 @@
   function goForward() {
     if (historyIndex < navHistory.length - 1) {
       historyIndex++;
-      const url = navHistory[historyIndex];
-      currentUrl = url;
-      urlInput.value = url;
-      loadPage(url);
+      currentUrl = navHistory[historyIndex];
+      urlInput.value = currentUrl;
+      loadPage(currentUrl);
       updateNavButtons();
     }
   }
@@ -348,9 +208,8 @@
     btnForward.disabled = historyIndex >= navHistory.length - 1;
   }
 
-  // ───── Event Binding ─────
+  // ───── Events ─────
   function bindEvents() {
-    // Setup panel
     $('#save-worker-btn').addEventListener('click', () => {
       const url = $('#worker-url-input').value.trim();
       if (!url) return;
@@ -359,53 +218,35 @@
       showBrowser();
     });
 
-    // URL form submit
-    urlForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      navigate(urlInput.value);
-    });
+    urlForm.addEventListener('submit', (e) => { e.preventDefault(); navigate(urlInput.value); });
 
-    // Welcome search form
     welcomeForm.addEventListener('submit', (e) => {
       e.preventDefault();
       navigate(welcomeInput.value);
       welcomeInput.value = '';
     });
 
-    // Quick links
     document.querySelectorAll('.quick-link').forEach((link) => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        navigate(link.dataset.url);
-      });
+      link.addEventListener('click', (e) => { e.preventDefault(); navigate(link.dataset.url); });
     });
 
-    // Navigation buttons
     btnBack.addEventListener('click', goBack);
     btnForward.addEventListener('click', goForward);
-    btnReload.addEventListener('click', () => {
-      if (currentUrl) loadPage(currentUrl);
-    });
+    btnReload.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
+    errorRetry.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
 
-    // Error retry
-    errorRetry.addEventListener('click', () => {
-      if (currentUrl) loadPage(currentUrl);
-    });
-
-    // Settings modal
     btnSettings.addEventListener('click', openSettings);
     $('#settings-cancel').addEventListener('click', closeSettings);
     $('.modal-backdrop').addEventListener('click', closeSettings);
     $('#settings-save').addEventListener('click', () => {
       settings.workerUrl = $('#settings-worker-url').value.trim();
-      settings.rewriteLinks = $('#settings-rewrite-links').checked;
       settings.stripScripts = $('#settings-strip-scripts').checked;
       saveSettings();
       closeSettings();
       if (!settings.workerUrl) showSetup();
     });
 
-    // Listen for navigation messages from proxied iframe
+    // Listen for navigation from proxied pages
     window.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'navigate' && e.data.url) {
         navigate(e.data.url);
@@ -422,15 +263,11 @@
 
   function openSettings() {
     $('#settings-worker-url').value = settings.workerUrl;
-    $('#settings-rewrite-links').checked = settings.rewriteLinks;
     $('#settings-strip-scripts').checked = settings.stripScripts;
     settingsModal.classList.remove('hidden');
   }
 
-  function closeSettings() {
-    settingsModal.classList.add('hidden');
-  }
+  function closeSettings() { settingsModal.classList.add('hidden'); }
 
-  // ───── Boot ─────
   init();
 })();
