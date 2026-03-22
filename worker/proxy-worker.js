@@ -162,16 +162,6 @@ function rewriteHtml(html, base, PROXY) {
     return '';
   });
 
-  // 1b. Inject <base href> pointing to the ORIGINAL site
-  const baseTag = `<base href="${escapeHtml(base.href)}">`;
-  if (/<head[^>]*>/i.test(html)) {
-    html = html.replace(/(<head[^>]*>)/i, '$1' + baseTag);
-  } else if (/<html[^>]*>/i.test(html)) {
-    html = html.replace(/(<html[^>]*>)/i, '$1<head>' + baseTag + '</head>');
-  } else {
-    html = baseTag + html;
-  }
-
   // 2. Rewrite attributes (double-quoted)
   html = html.replace(
     /(\b(?:src|href|srcset|poster|data|content|action|background|formaction)\s*=\s*")([^"]*?)(")/gi,
@@ -376,12 +366,15 @@ function rewriteHtml(html, base, PROXY) {
 })();
 </` + 'script>';
 
-  if (/<\/body>/i.test(html)) {
-    html = html.replace(/<\/body>/i, script + '</body>');
-  } else if (/<\/html>/i.test(html)) {
-    html = html.replace(/<\/html>/i, script + '</html>');
+  // Inject at the TOP of <head> so interceptors are active before any resources load
+  if (/<head[^>]*>/i.test(html)) {
+    html = html.replace(/(<head[^>]*>)/i, '$1' + script);
+  } else if (/<html[^>]*>/i.test(html)) {
+    html = html.replace(/(<html[^>]*>)/i, '$1<head>' + script + '</head>');
+  } else if (/<\!doctype[^>]*>/i.test(html)) {
+    html = html.replace(/(<\!doctype[^>]*>)/i, '$1<head>' + script + '</head>');
   } else {
-    html += script;
+    html = '<head>' + script + '</head>' + html;
   }
 
   return html;
