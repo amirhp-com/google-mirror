@@ -445,6 +445,29 @@ input { font-family: inherit; }
   flex-shrink: 0;
 }
 
+.history-delete {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.history-item:hover .history-delete {
+  opacity: 1;
+}
+
+.history-delete:hover {
+  color: var(--danger);
+  background: rgba(233, 69, 96, 0.15);
+}
+
 .history-empty {
   padding: 32px 16px;
   text-align: center;

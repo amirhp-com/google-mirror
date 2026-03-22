@@ -1,5 +1,5 @@
 /**
- * WebGate v1.3.2 — Vercel Serverless Proxy
+ * WebGate v1.3.3 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.3.2' });
+    return res.status(200).json({ status: 'ok', version: '1.3.3' });
   }
 
   const targetUrl = req.query.url;
@@ -402,12 +402,24 @@ function rewriteHtml(html, base, PROXY) {
     window.parent.postMessage({ type: 'navigate', url: href }, '*');
   }, true);
 
+  function stripProxy(u) {
+    if (!u) return u;
+    var m = u.match(/[?&]url=([^&]+)/);
+    if (m) try { return decodeURIComponent(m[1]); } catch(x) {}
+    return u;
+  }
+
   document.addEventListener('submit', function(e) {
     var form = e.target;
     if (!form || form.tagName !== 'FORM') return;
     e.preventDefault();
-    var action = form.getAttribute('action') || BASE;
-    try { action = new URL(action, BASE).href; } catch(x) {}
+    var action = form.getAttribute('action') || '';
+    // Strip proxy prefix if the action was already rewritten
+    action = stripProxy(action);
+    // If empty or relative, resolve against original base
+    if (!action || !/^https?:\\/\\//.test(action)) {
+      try { action = new URL(action || '', BASE).href; } catch(x) { action = BASE; }
+    }
     var fd = new FormData(form);
     var params = new URLSearchParams(fd).toString();
     var method = (form.method || 'GET').toUpperCase();

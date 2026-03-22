@@ -1,5 +1,5 @@
 /**
- * WebGate v1.3.2 — Virtual Browser
+ * WebGate v1.3.3 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.3.2';
+  const VERSION = '1.3.3';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '', cfWorkerUrl: '', useCf: false };
   const HISTORY_KEY = 'webgate_history';
@@ -115,10 +115,19 @@
   function showBrowser() {
     setupPanel.classList.add('hidden');
     toolbar.classList.remove('hidden');
-    welcomeScreen.classList.remove('hidden');
-    contentFrame.classList.add('hidden');
     errorScreen.classList.add('hidden');
     loadingBar.classList.add('hidden');
+
+    // Restore URL from hash on load/refresh
+    const hashUrl = decodeHashUrl();
+    if (hashUrl) {
+      welcomeScreen.classList.add('hidden');
+      contentFrame.classList.add('hidden');
+      navigate(hashUrl);
+    } else {
+      welcomeScreen.classList.remove('hidden');
+      contentFrame.classList.add('hidden');
+    }
   }
 
   function showHome() {
@@ -128,6 +137,8 @@
     loadingBar.classList.add('hidden');
     urlInput.value = '';
     currentUrl = '';
+    // Clear hash so refresh shows home
+    if (window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search);
   }
 
   function showContent() {
@@ -188,6 +199,17 @@
     return url;
   }
 
+  // ───── Hash persistence ─────
+  function setHashUrl(url) {
+    history.replaceState(null, '', '#' + encodeURIComponent(url));
+  }
+
+  function decodeHashUrl() {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return null;
+    try { return decodeURIComponent(hash); } catch { return null; }
+  }
+
   // ───── Navigation ─────
   async function navigate(rawInput) {
     rawInput = stripProxyPrefix(rawInput);
@@ -196,6 +218,7 @@
 
     currentUrl = url;
     try { urlInput.value = decodeURI(url); } catch { urlInput.value = url; }
+    setHashUrl(url);
     addToHistory(url);
 
     if (historyIndex < navHistory.length - 1) {
@@ -326,6 +349,18 @@
     $('#btn-history').addEventListener('click', toggleHistory);
     $('#history-clear').addEventListener('click', clearHistory);
     document.addEventListener('click', (e) => {
+      // Delete single history entry
+      const delBtn = e.target.closest('.history-delete');
+      if (delBtn) {
+        e.stopPropagation();
+        const idx = parseInt(delBtn.dataset.delidx);
+        if (!isNaN(idx) && idx >= 0 && idx < browsingHistory.length) {
+          browsingHistory.splice(idx, 1);
+          saveHistory();
+          renderHistoryPanel();
+        }
+        return;
+      }
       const item = e.target.closest('.history-item');
       if (item) {
         const idx = parseInt(item.dataset.idx);
@@ -387,6 +422,7 @@
       return `<li class="history-item" data-idx="${i}">
         <span class="history-url" title="${displayUrl}">${displayUrl}</span>
         <span class="history-time">${dateStr} ${timeStr}</span>
+        <button class="history-delete" data-delidx="${i}" title="Remove">&times;</button>
       </li>`;
     }).join('');
   }
