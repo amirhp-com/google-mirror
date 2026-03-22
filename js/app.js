@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.8 — Virtual Browser
+ * WebGate v1.2.9 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,14 +9,16 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.2.8';
+  const VERSION = '1.2.9';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '', cfWorkerUrl: '', useCf: false };
+  const HISTORY_KEY = 'webgate_history';
 
   let settings = loadSettings();
   let navHistory = [];
   let historyIndex = -1;
   let currentUrl = '';
+  let browsingHistory = loadHistory();
 
   const $ = (s) => document.querySelector(s);
   const setupPanel    = $('#setup-panel');
@@ -76,6 +78,28 @@
 
   function saveSettings() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  }
+
+  function loadHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    } catch { return []; }
+  }
+
+  function saveHistory() {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(browsingHistory.slice(0, 200)));
+  }
+
+  function addToHistory(url) {
+    browsingHistory.unshift({ url, time: Date.now() });
+    if (browsingHistory.length > 200) browsingHistory.length = 200;
+    saveHistory();
+  }
+
+  function clearHistory() {
+    browsingHistory = [];
+    saveHistory();
+    renderHistoryPanel();
   }
 
   // ───── Views ─────
@@ -172,6 +196,7 @@
 
     currentUrl = url;
     try { urlInput.value = decodeURI(url); } catch { urlInput.value = url; }
+    addToHistory(url);
 
     if (historyIndex < navHistory.length - 1) {
       navHistory = navHistory.slice(0, historyIndex + 1);
@@ -286,6 +311,27 @@
       if (!settings.workerUrl && !settings.cfWorkerUrl) showSetup();
     });
 
+    // History
+    $('#btn-history').addEventListener('click', toggleHistory);
+    $('#history-clear').addEventListener('click', clearHistory);
+    document.addEventListener('click', (e) => {
+      const item = e.target.closest('.history-item');
+      if (item) {
+        const idx = parseInt(item.dataset.idx);
+        if (browsingHistory[idx]) {
+          navigate(browsingHistory[idx].url);
+          $('#history-panel').classList.add('hidden');
+        }
+      }
+      // Close history panel when clicking outside
+      if (!e.target.closest('#history-panel') && !e.target.closest('#btn-history')) {
+        const panel = $('#history-panel');
+        if (panel && !panel.classList.contains('hidden')) {
+          panel.classList.add('hidden');
+        }
+      }
+    });
+
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if (e.altKey && e.key === 'ArrowLeft') { goBack(); e.preventDefault(); }
@@ -302,6 +348,37 @@
   }
 
   function closeSettings() { settingsModal.classList.add('hidden'); }
+
+  // ───── History Panel ─────
+  function toggleHistory() {
+    const panel = $('#history-panel');
+    if (panel.classList.contains('hidden')) {
+      renderHistoryPanel();
+      panel.classList.remove('hidden');
+    } else {
+      panel.classList.add('hidden');
+    }
+  }
+
+  function renderHistoryPanel() {
+    const list = $('#history-list');
+    if (!list) return;
+    if (browsingHistory.length === 0) {
+      list.innerHTML = '<li class="history-empty">No browsing history</li>';
+      return;
+    }
+    list.innerHTML = browsingHistory.map((entry, i) => {
+      let displayUrl;
+      try { displayUrl = decodeURI(entry.url); } catch { displayUrl = entry.url; }
+      const time = new Date(entry.time);
+      const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateStr = time.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return `<li class="history-item" data-idx="${i}">
+        <span class="history-url" title="${displayUrl}">${displayUrl}</span>
+        <span class="history-time">${dateStr} ${timeStr}</span>
+      </li>`;
+    }).join('');
+  }
 
   init();
 })();
