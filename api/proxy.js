@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.4 — Vercel Serverless Proxy
+ * WebGate v1.2.5 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -10,7 +10,7 @@
  *       ... and so on for every sub-resource.
  */
 
-const MAX_SIZE = 15 * 1024 * 1024;
+const MAX_SIZE = 50 * 1024 * 1024;
 
 export default async function handler(req, res) {
   // CORS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.2.4' });
+    return res.status(200).json({ status: 'ok', version: '1.2.5' });
   }
 
   const targetUrl = req.query.url;
@@ -74,6 +74,10 @@ export default async function handler(req, res) {
     const ct = resp.headers.get('content-type') || 'application/octet-stream';
     const cc = resp.headers.get('cache-control');
     if (cc) res.setHeader('Cache-Control', cc);
+
+    // Forward Content-Disposition for file downloads
+    const cd = resp.headers.get('content-disposition');
+    if (cd) res.setHeader('Content-Disposition', cd);
 
     // Forward Set-Cookie headers from target (rewrite for proxy domain)
     const setCookies = resp.headers.getSetCookie ? resp.headers.getSetCookie() : [];

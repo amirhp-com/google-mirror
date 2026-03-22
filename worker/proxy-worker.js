@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.4 — Cloudflare Workers Proxy
+ * WebGate v1.2.5 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -7,7 +7,7 @@
  * Deploy: npx wrangler deploy worker/proxy-worker.js --name webgate-proxy
  */
 
-const MAX_SIZE = 15 * 1024 * 1024;
+const MAX_SIZE = 50 * 1024 * 1024;
 
 export default {
   async fetch(request, env, ctx) {
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.4' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.5' }));
       }
 
       let target;
@@ -64,6 +64,10 @@ export default {
       const respHeaders = new Headers();
       respHeaders.set('Content-Type', ct);
       if (cc) respHeaders.set('Cache-Control', cc);
+
+      // Forward Content-Disposition for file downloads
+      const cd = resp.headers.get('content-disposition');
+      if (cd) respHeaders.set('Content-Disposition', cd);
 
       // Forward Set-Cookie headers from target (rewrite for proxy domain)
       const setCookies = resp.headers.getSetCookie ? resp.headers.getSetCookie() : [];

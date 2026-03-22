@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.4 — Virtual Browser
+ * WebGate v1.2.5 — Virtual Browser
  *
  * KEY ARCHITECTURE: The iframe loads directly from /api/proxy?url=...
  * NOT from blob URLs. This means the browser naturally resolves all
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.2.4';
+  const VERSION = '1.2.5';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '', cfWorkerUrl: '', useCf: false };
 
@@ -34,6 +34,7 @@
   const btnBack       = $('#btn-back');
   const btnForward    = $('#btn-forward');
   const btnReload     = $('#btn-reload');
+  const btnStop       = $('#btn-stop');
   const btnSettings   = $('#btn-settings');
   const settingsModal = $('#settings-modal');
   const errorMessage  = $('#error-message');
@@ -119,8 +120,16 @@
     errorMessage.textContent = msg;
   }
 
-  function showLoading() { loadingBar.classList.remove('hidden'); }
-  function hideLoading() { loadingBar.classList.add('hidden'); }
+  function showLoading() {
+    loadingBar.classList.remove('hidden');
+    btnReload.classList.add('hidden');
+    btnStop.classList.remove('hidden');
+  }
+  function hideLoading() {
+    loadingBar.classList.add('hidden');
+    btnStop.classList.add('hidden');
+    btnReload.classList.remove('hidden');
+  }
 
   // ───── URL ─────
   function normalizeUrl(input) {
@@ -241,6 +250,10 @@
     btnBack.addEventListener('click', goBack);
     btnForward.addEventListener('click', goForward);
     btnReload.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
+    btnStop.addEventListener('click', () => {
+      proxyFrame.src = 'about:blank';
+      hideLoading();
+    });
     errorRetry.addEventListener('click', () => { if (currentUrl) loadPage(currentUrl); });
 
     // Iframe load/error events
