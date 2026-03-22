@@ -745,6 +745,7 @@ input { font-family: inherit; }
 
 /* ===== Responsive ===== */
 @media (max-width: 600px) {
+  :root { --toolbar-h: 46px; }
   .welcome-title { font-size: 36px; }
   .welcome-subtitle { font-size: 15px; margin-bottom: 28px; }
   .quick-links { gap: 12px; }
@@ -752,6 +753,34 @@ input { font-family: inherit; }
   .quick-icon { width: 40px; height: 40px; font-size: 16px; }
   .setup-card { padding: 28px 20px; }
   .setup-card .input-group { flex-direction: column; }
-  #toolbar { padding: 6px 8px; gap: 4px; }
-  .toolbar-left .nav-btn:nth-child(2) { display: none; }
+
+  /* Toolbar: compact for mobile */
+  #toolbar { padding: 4px 6px; gap: 3px; }
+  .nav-btn { width: 32px; height: 32px; }
+  .nav-btn svg { width: 18px; height: 18px; }
+
+  /* Hide back/forward on small screens — save space for URL bar */
+  .toolbar-left .nav-btn:nth-child(2),
+  .toolbar-left .nav-btn:nth-child(3) { display: none; }
+
+  /* Address bar: more compact */
+  .url-bar { padding: 0 8px; border-radius: 8px; }
+  .url-bar input { padding: 6px 6px; font-size: 13px; }
+  .secure-icon { display: none; }
+  .go-btn { padding: 5px 10px; font-size: 12px; border-radius: 5px; }
+  .copy-btn { padding: 4px; }
+
+  /* History panel full-width */
+  .history-panel { width: 100%; right: 0; left: 0; border-radius: 0 0 12px 12px; }
+
+  /* Settings modal full-screen on mobile */
+  .modal-card { max-width: 100%; width: 100%; max-height: 100vh; border-radius: 0; }
+}
+
+@media (max-width: 380px) {
+  /* Very small screens: hide copy button, shrink further */
+  .copy-btn { display: none; }
+  .go-btn { padding: 5px 8px; }
+  .url-bar input { font-size: 12px; }
+  .toolbar-right .nav-btn:nth-child(1) { display: none; } /* hide history btn */
 }

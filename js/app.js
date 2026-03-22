@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.3.6';
+  const VERSION = '1.4.0';
   const STORAGE_KEY = 'webgate_settings';
   const defaults = { workerUrl: '', cfWorkerUrl: '', useCf: false };
   const HISTORY_KEY = 'webgate_history';
