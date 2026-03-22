@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.7 — Vercel Serverless Proxy
+ * WebGate v1.2.8 — Vercel Serverless Proxy
  *
  * This is the core of the virtual browser. Every request from the iframe
  * hits this endpoint. It fetches the real page, rewrites ALL URLs in HTML/CSS
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   // Health / no-url
   if (!req.query.url) {
-    return res.status(200).json({ status: 'ok', version: '1.2.7' });
+    return res.status(200).json({ status: 'ok', version: '1.2.8' });
   }
 
   const targetUrl = req.query.url;
@@ -230,21 +230,20 @@ function rewriteHtml(html, base, PROXY) {
     return s;
   });
 
-  // 7. Rewrite <a> tags for navigation via postMessage
-  //    (after the general href rewrite above, <a> hrefs now point to /api/proxy?url=...
-  //     we need to override them to use postMessage instead for SPA navigation)
+  // 7. Rewrite <a> tags: store original URL in data attribute for the click interceptor.
+  //    Keep a working href (not "#") so links work even before JS loads.
   html = html.replace(
     /(<a\s[^>]*?)href\s*=\s*"([^"]*\/api\/proxy\?url=([^"]*))"/gi,
     (m, pre, proxyHref, encoded) => {
       const original = decodeURIComponent(encoded);
-      return `${pre}href="#" data-proxy-href="${escapeHtml(original)}" onclick="window.parent.postMessage({type:'navigate',url:this.dataset.proxyHref},'*');return false;"`;
+      return `${pre}href="${proxyHref}" data-proxy-href="${escapeHtml(original)}"`;
     }
   );
   html = html.replace(
     /(<a\s[^>]*?)href\s*=\s*'([^']*\/api\/proxy\?url=([^']*))'/ ,
     (m, pre, proxyHref, encoded) => {
       const original = decodeURIComponent(encoded);
-      return `${pre}href="#" data-proxy-href="${escapeHtml(original)}" onclick="window.parent.postMessage({type:'navigate',url:this.dataset.proxyHref},'*');return false;"`;
+      return `${pre}href="${proxyHref}" data-proxy-href="${escapeHtml(original)}"`;
     }
   );
 
@@ -388,8 +387,14 @@ function rewriteHtml(html, base, PROXY) {
     if (!href) {
       href = a.getAttribute('href');
       if (!href || href === '#' || href.startsWith('javascript:') || href.startsWith('blob:') || href.startsWith('data:')) return;
-      // Resolve relative
-      try { href = new URL(href, BASE).href; } catch(x) { return; }
+      // Strip proxy prefix if present (e.g., /api/proxy?url=ENCODED)
+      var urlMatch = href.match(/[?&]url=([^&]+)/);
+      if (urlMatch) {
+        try { href = decodeURIComponent(urlMatch[1]); } catch(x) {}
+      } else {
+        // Resolve relative against original site
+        try { href = new URL(href, BASE).href; } catch(x) { return; }
+      }
     }
 
     e.preventDefault();

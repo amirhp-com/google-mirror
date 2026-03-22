@@ -1,5 +1,5 @@
 /**
- * WebGate v1.2.7 — Cloudflare Workers Proxy
+ * WebGate v1.2.8 — Cloudflare Workers Proxy
  *
  * Full-featured proxy with URL rewriting (same as Vercel backend).
  * Rewrites all HTML/CSS/JS URLs to route through the worker.
@@ -22,7 +22,7 @@ export default {
       // Health check / no url param
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
-        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.7' }));
+        return handleCors(request, jsonResponse({ status: 'ok', version: '1.2.8' }));
       }
 
       let target;
@@ -228,22 +228,14 @@ function rewriteHtml(html, base, PROXY) {
     return s;
   });
 
-  // 7. <a> tags for postMessage navigation
-  html = html.replace(
-    /(<a\s[^>]*?)href\s*=\s*"([^"]*\/api\/proxy\?url=([^"]*))"/gi,
-    (m, pre, proxyHref, encoded) => {
-      const original = decodeURIComponent(encoded);
-      return `${pre}href="#" data-proxy-href="${escapeHtml(original)}" onclick="window.parent.postMessage({type:'navigate',url:this.dataset.proxyHref},'*');return false;"`;
-    }
-  );
-  // Also match worker URLs for Cloudflare
+  // 7. <a> tags: store original URL in data attribute, keep working href
   html = html.replace(
     /(<a\s[^>]*?)href\s*=\s*"([^"]*\?url=([^"]*))"/gi,
     (m, pre, proxyHref, encoded) => {
       if (!proxyHref.includes('?url=')) return m;
-      if (pre.includes('data-proxy-href')) return m; // already handled
+      if (pre.includes('data-proxy-href')) return m;
       const original = decodeURIComponent(encoded);
-      return `${pre}href="#" data-proxy-href="${escapeHtml(original)}" onclick="window.parent.postMessage({type:'navigate',url:this.dataset.proxyHref},'*');return false;"`;
+      return `${pre}href="${proxyHref}" data-proxy-href="${escapeHtml(original)}"`;
     }
   );
 
@@ -384,7 +376,12 @@ function rewriteHtml(html, base, PROXY) {
     if (!href) {
       href = a.getAttribute('href');
       if (!href || href === '#' || href.startsWith('javascript:') || href.startsWith('blob:') || href.startsWith('data:')) return;
-      try { href = new URL(href, BASE).href; } catch(x) { return; }
+      var urlMatch = href.match(/[?&]url=([^&]+)/);
+      if (urlMatch) {
+        try { href = decodeURIComponent(urlMatch[1]); } catch(x) {}
+      } else {
+        try { href = new URL(href, BASE).href; } catch(x) { return; }
+      }
     }
     e.preventDefault();
     e.stopPropagation();
