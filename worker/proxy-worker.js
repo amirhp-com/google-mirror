@@ -9,7 +9,7 @@
 
 // Allowed origins — add your GitHub Pages URL here
 const ALLOWED_ORIGINS = [
-  'https://YOUR_GITHUB_USERNAME.github.io',  // Replace with your actual GitHub Pages URL
+  'https://amirhp-com.github.io',  // Replace with your actual GitHub Pages URL
   'http://localhost:3000',
   'http://localhost:8080',
   'http://127.0.0.1:5500',                   // VS Code Live Server
